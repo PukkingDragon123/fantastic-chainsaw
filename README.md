@@ -20,6 +20,17 @@ Open the URL in one browser tab per player (works over LAN — friends connect t
 The server is authoritative; the world auto-saves to `save.json` every minute and on shutdown,
 and players rejoin by name with their character intact.
 
+### Solo build (no server, playable from any static host)
+
+`index.html` at the repo root is a self-contained **single-player** build: the whole simulation
+runs in the browser, progress saves to localStorage (add `?fresh` to the URL for a new world).
+Play it straight from a CDN, e.g. `https://rawcdn.githack.com/<user>/<repo>/<commit>/index.html`.
+Regenerate it after changing game code with:
+
+```bash
+node scripts/build-static.js
+```
+
 ## Controls
 
 | Key | Action |
