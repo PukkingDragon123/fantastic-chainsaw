@@ -2,9 +2,9 @@
 // building, research, and the wormhole objective. The server owns all truth;
 // clients only send inputs/actions and render snapshots.
 import {
-  T, TILE_INFO, WORLD_W, WORLD_H, DAY_LENGTH, DAYS_PER_SEASON, SEASONS, SEASON_TEMP,
-  ITEMS, RECIPES, STRUCTURES, CREATURES, RESOURCES, WORMHOLE_PARTS, TIER_RP,
-  INV_SLOTS, recipeById,
+  T, TILE_INFO, WORLD_W, WORLD_H, DAY_LENGTH, DAYS_PER_SEASON, SEASON_TEMP,
+  ITEMS, STRUCTURES, CREATURES, RESOURCES, WORMHOLE_PARTS, TIER_RP,
+  INV_SLOTS, recipeById, phaseOf, PHASE, SAVE_VERSION,
 } from '../shared/defs.js';
 import { generateWorld, mulberry32 } from './worldgen.js';
 
@@ -41,6 +41,9 @@ export class Game {
     this.spawnTimer = 0;
     this.sweepTimer = 0;
     this.nextPid = 1;
+    // spinehound attack waves (DST-style hound raids)
+    this.nextWave = save?.nextWave ?? this.t + DAY_LENGTH * (2 + this.rng());
+    this.waveAt = 0;
 
     this.populateCreatures();
   }
@@ -92,7 +95,8 @@ export class Game {
   get day() { return Math.floor(this.t / DAY_LENGTH); }
   get tod() { return (this.t % DAY_LENGTH) / DAY_LENGTH; } // 0 = midnight
   get seasonIdx() { return Math.floor(this.day / DAYS_PER_SEASON) % 4; }
-  get isNight() { const td = this.tod; return td < 0.22 || td > 0.78; }
+  get phase() { return phaseOf(this.tod); }
+  get isNight() { return this.phase === PHASE.NIGHT; }
   ambientAt(x, y) {
     const base = SEASON_TEMP[this.seasonIdx];
     const diurnal = Math.sin((this.tod - 0.25) * Math.PI * 2) * 7;
@@ -104,6 +108,13 @@ export class Game {
       if (o.ty === 'campfire' && o.lit && dist2(o.x + 0.5, o.y + 0.5, x, y) < 16) return true;
     return false;
   }
+  // is this player protected from the dark? (torch in hand, lit fire, or the wormhole's glow)
+  hasLight(p) {
+    const hand = this.equipped(p, 'handSlot');
+    if (hand && ITEMS[hand.id].light) return true;
+    if (this.nearLitFire(p.x, p.y)) return true;
+    return dist2(this.wormhole.x + 0.5, this.wormhole.y + 0.5, p.x, p.y) < 25;
+  }
   nearStructure(p, ty, r = 3) {
     for (const o of this.objects.values())
       if (o.ty === ty && dist2(o.x + 0.5, o.y + 0.5, p.x, p.y) < r * r) return o;
@@ -111,12 +122,15 @@ export class Game {
   }
 
   // ---------- inventory ----------
-  addItem(inv, id, n, uses) {
+  addItem(inv, id, n, uses, fresh) {
     const def = ITEMS[id];
+    if (def.perish) fresh = fresh ?? 1;
     for (let i = 0; i < inv.length && n > 0; i++) {
       const s = inv[i];
       if (s && s.id === id && def.stack > 1 && s.n < def.stack) {
-        const add = Math.min(n, def.stack - s.n); s.n += add; n -= add;
+        const add = Math.min(n, def.stack - s.n);
+        if (def.perish) s.fresh = (s.fresh * s.n + fresh * add) / (s.n + add); // weighted freshness
+        s.n += add; n -= add;
       }
     }
     for (let i = 0; i < inv.length && n > 0; i++) {
@@ -124,10 +138,22 @@ export class Game {
         const put = Math.min(n, def.stack);
         inv[i] = { id, n: put };
         if (def.tool) inv[i].uses = uses ?? def.tool.uses;
+        if (def.perish) inv[i].fresh = fresh;
         n -= put;
       }
     }
     return n; // leftover that didn't fit
+  }
+  // freshness decay; cold weather (ambient < 5°C) halves spoilage, crates slow it further
+  decayInv(inv, dt, factor) {
+    for (let i = 0; i < inv.length; i++) {
+      const s = inv[i];
+      if (!s) continue;
+      const def = ITEMS[s.id];
+      if (!def?.perish) continue;
+      s.fresh = (s.fresh ?? 1) - (dt / def.perish) * factor;
+      if (s.fresh <= 0) inv[i] = { id: 'spoiled_mush', n: s.n };
+    }
   }
   countItem(inv, id) { return inv.reduce((a, s) => a + (s && s.id === id ? s.n : 0), 0); }
   removeItem(inv, id, n) {
@@ -148,9 +174,9 @@ export class Game {
   addPlayer(name) {
     const saved = this.savedPlayers[name];
     const sp = saved?.spawn ?? this.spawnPoint();
-    const p = saved ? { ...saved } : {
+    const p = saved ? { sanity: 100, ...saved } : {
       name, x: sp.x, y: sp.y, spawn: { ...sp },
-      hp: 100, hunger: 100, thirst: 100, stam: 100, temp: 37,
+      hp: 100, hunger: 100, thirst: 100, stam: 100, temp: 37, sanity: 100,
       fx: { bleed: false, bleedT: 0, parasites: false, spore: false, infection: false },
       inv: Array(INV_SLOTS).fill(null), handSlot: -1, bodySlot: -1,
       dead: false, respawnIn: 0,
@@ -162,6 +188,8 @@ export class Game {
     p.hitCool = 0;        // last hit flash (client)
     p.mail = [];          // private messages this snapshot
     p.exposure = 0;
+    p.darkT = 0;          // seconds spent in total darkness
+    p.sleeping = false;
     this.players.set(p.id, p);
     return p;
   }
@@ -170,8 +198,8 @@ export class Game {
     this.players.delete(p.id);
   }
   persistPlayer(p) {
-    const { name, x, y, spawn, hp, hunger, thirst, stam, temp, fx, inv, handSlot, bodySlot, dead, respawnIn } = p;
-    return { name, x, y, spawn, hp, hunger, thirst, stam, temp, fx, inv, handSlot, bodySlot, dead, respawnIn };
+    const { name, x, y, spawn, hp, hunger, thirst, stam, temp, sanity, fx, inv, handSlot, bodySlot, dead, respawnIn } = p;
+    return { name, x, y, spawn, hp, hunger, thirst, stam, temp, sanity, fx, inv, handSlot, bodySlot, dead, respawnIn };
   }
   equipped(p, slotField) {
     const idx = p[slotField];
@@ -207,7 +235,8 @@ export class Game {
   }
   respawn(p) {
     p.dead = false;
-    p.hp = 60; p.hunger = 55; p.thirst = 55; p.stam = 80; p.temp = 37;
+    p.hp = 60; p.hunger = 55; p.thirst = 55; p.stam = 80; p.temp = 37; p.sanity = 65;
+    p.sleeping = false; p.darkT = 0;
     p.fx = { bleed: false, bleedT: 0, parasites: false, spore: false, infection: false };
     p.x = p.spawn.x; p.y = p.spawn.y;
     // if their bed was destroyed, fall back to the wormhole
@@ -245,7 +274,10 @@ export class Game {
           const left = this.addItem(killer.inv, d.item, d.n);
           if (left) this.addObject({ i: this.nextId++, ty: 'bag', x: Math.floor(c.x), y: Math.floor(c.y), inv: [{ id: d.item, n: left }] });
         }
-      this.msg(killer, `${def.name} killed.`);
+      if (def.shadow) {
+        killer.sanity = clamp(killer.sanity + 15, 0, 100);
+        this.msg(killer, 'The phantasm dissolves. Your mind steadies (+15 sanity).');
+      } else this.msg(killer, `${def.name} killed.`);
     }
     this.creatures.delete(c.i);
   }
@@ -253,8 +285,19 @@ export class Game {
     const def = CREATURES[c.sp];
     c.think -= dt; c.atkCool -= dt;
 
-    // daybreak: night stalkers dissolve
-    if (def.night && !this.isNight) { this.creatures.delete(c.i); return; }
+    // daybreak: night stalkers dissolve (wave hounds persist until slain)
+    if (def.night && !this.isNight && !c.wave) { this.creatures.delete(c.i); return; }
+
+    // phantasms exist only while someone nearby is losing their mind
+    if (def.shadow) {
+      let anchor = null, ad = Infinity;
+      for (const p of this.players.values()) {
+        if (p.dead) continue;
+        const d = dist2(p.x, p.y, c.x, c.y);
+        if (d < ad) { ad = d; anchor = p; }
+      }
+      if (!anchor || anchor.sanity > 42 || ad > 24 * 24) { this.creatures.delete(c.i); return; }
+    }
 
     if (c.think <= 0) {
       c.think = 0.4 + this.rng() * 0.5;
@@ -281,14 +324,18 @@ export class Game {
       }
     }
 
-    // movement toward (tx,ty)
+    // movement toward (tx,ty) — phantasms drift through everything
     const dx = c.tx - c.x, dy = c.ty - c.y;
     const d = Math.hypot(dx, dy);
     const spd = def.speed * (c.state === 'idle' ? 0.5 : 1);
     if (d > 0.15) {
       const nx = c.x + (dx / d) * spd * dt, ny = c.y + (dy / d) * spd * dt;
-      if (this.walkable(nx, c.y)) c.x = nx;
-      if (this.walkable(c.x, ny)) c.y = ny;
+      if (def.shadow) {
+        c.x = clamp(nx, 1, WORLD_W - 1); c.y = clamp(ny, 1, WORLD_H - 1);
+      } else {
+        if (this.walkable(nx, c.y)) c.x = nx;
+        if (this.walkable(c.x, ny)) c.y = ny;
+      }
     }
 
     // melee
@@ -303,6 +350,7 @@ export class Game {
   }
   hurtPlayer(p, dmg, cause) {
     if (p.dead) return;
+    if (p.sleeping) { p.sleeping = false; this.msg(p, 'You are jolted awake!'); }
     p.hp -= dmg;
     p.hitCool = 0.4;
     if (p.hp <= 0) this.killPlayer(p, cause);
@@ -316,9 +364,50 @@ export class Game {
     c.think = 0;
   }
   spawnPass(dt) {
+    // spinehound raids: a warning howl, then the pack arrives
+    if (this.waveAt && this.t >= this.waveAt) {
+      this.waveAt = 0;
+      let spawned = 0;
+      for (const p of this.players.values()) {
+        if (p.dead) continue;
+        const n = Math.min(4, 2 + Math.floor(this.day / 8));
+        for (let k = 0; k < n; k++) {
+          for (let tries = 0; tries < 8; tries++) {
+            const ang = this.rng() * Math.PI * 2, r = 9 + this.rng() * 5;
+            const x = p.x + Math.cos(ang) * r, y = p.y + Math.sin(ang) * r;
+            if (!this.walkable(x, y)) continue;
+            const c = this.spawnCreature('spinehound', x, y);
+            c.wave = true; c.state = 'chase'; c.target = p.id;
+            spawned++;
+            break;
+          }
+        }
+      }
+      if (spawned) this.emit({ t: 'chat', from: '⚠', m: 'The pack is upon you!' });
+      this.nextWave = this.t + DAY_LENGTH * (2.5 + this.rng() * 2);
+    } else if (!this.waveAt && this.t >= this.nextWave && this.players.size > 0) {
+      this.waveAt = this.t + 30;
+      this.emit({ t: 'chat', from: '⚠', m: 'A distant chittering rides the wind… something is coming.' });
+    }
+
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnTimer = 6;
+
+    // phantasms stalk the insane
+    for (const p of this.players.values()) {
+      if (p.dead || p.sanity >= 30) continue;
+      let near = 0;
+      for (const c of this.creatures.values())
+        if (CREATURES[c.sp].shadow && dist2(c.x, c.y, p.x, p.y) < 20 * 20) near++;
+      const want = p.sanity < 15 ? 2 : 1;
+      if (near < want) {
+        const ang = this.rng() * Math.PI * 2, r = 8 + this.rng() * 3;
+        const c = this.spawnCreature('phantasm', clamp(p.x + Math.cos(ang) * r, 1, WORLD_W - 1), clamp(p.y + Math.sin(ang) * r, 1, WORLD_H - 1));
+        c.state = 'chase'; c.target = p.id;
+        this.msg(p, 'Something impossible peels itself out of the shadows…');
+      }
+    }
     // night hostiles near players
     if (this.isNight) {
       for (const p of this.players.values()) {
@@ -359,9 +448,12 @@ export class Game {
     p.cool = Math.max(0, p.cool - dt);
     p.hitCool = Math.max(0, p.hitCool - dt);
 
-    // --- movement ---
+    const phase = this.phase;
+    if (p.sleeping && phase === PHASE.DAY) { p.sleeping = false; this.msg(p, 'You wake with the dawn.'); }
+
+    // --- movement (none while asleep) ---
     const { mx, my, sprint } = p.input;
-    const moving = mx || my;
+    const moving = !p.sleeping && (mx || my);
     const tile = this.tileAt(p.x, p.y);
     const sprinting = sprint && moving && p.stam > 1;
     let spd = sprinting ? 6.4 : 4.2;
@@ -374,6 +466,44 @@ export class Game {
       if (this.walkable(p.x, ny)) p.y = ny;
       p.x = clamp(p.x, 0.5, WORLD_W - 0.5); p.y = clamp(p.y, 0.5, WORLD_H - 0.5);
     }
+
+    // --- equipped torch burns down ---
+    const handItem = this.equipped(p, 'handSlot');
+    if (handItem && ITEMS[handItem.id].burns) {
+      handItem.uses -= dt * 0.33;
+      if (handItem.uses <= 0) {
+        this.msg(p, `Your ${ITEMS[handItem.id].name} gutters out.`);
+        p.inv[p.handSlot] = null; p.handSlot = -1;
+      }
+    }
+
+    // --- the darkness is not empty (stay in light at night!) ---
+    const lit = this.hasLight(p);
+    if (phase === PHASE.NIGHT && !lit) {
+      if (p.darkT === 0) this.msg(p, 'It is pitch dark. Something is circling you…');
+      p.darkT += dt;
+      if (p.darkT > 5 && (p.darkT % 4) < dt) {
+        this.hurtPlayer(p, 10, 'the darkness');
+        p.sanity = clamp(p.sanity - 5, 0, 100);
+        if (!p.dead) this.msg(p, 'Teeth rake you from the black! Find light!');
+      }
+    } else p.darkT = 0;
+
+    // --- sanity ---
+    let dsan = 0;
+    if (phase === PHASE.NIGHT) dsan -= lit ? 0.035 : 0.13;
+    else if (phase === PHASE.DUSK) dsan -= 0.02;
+    else dsan += 0.03;
+    if (this.nearLitFire(p.x, p.y)) dsan += 0.06;
+    if (p.sleeping) dsan += 0.22;
+    for (const c of this.creatures.values()) {
+      const def = CREATURES[c.sp];
+      if ((def.aggro || def.shadow) && dist2(c.x, c.y, p.x, p.y) < 36) { dsan -= def.shadow ? 0.14 : 0.07; break; }
+    }
+    p.sanity = clamp(p.sanity + dsan * dt * 2.2, 0, 100);
+
+    // --- food spoilage in your pack ---
+    this.decayInv(p.inv, dt, this.ambientAt(p.x, p.y) < 5 ? 0.5 : 1);
 
     // --- temperature ---
     let eff = this.ambientAt(p.x, p.y);
@@ -439,6 +569,8 @@ export class Game {
     this.sweepTimer -= dt;
     if (this.sweepTimer > 0) return;
     const step = 1; this.sweepTimer = step;
+    const winter = this.seasonIdx === 3;
+    const coldWorld = SEASON_TEMP[this.seasonIdx] < 5;
     for (const o of this.objects.values()) {
       if (o.ty === 'campfire' && o.lit) {
         o.fuel -= step;
@@ -446,9 +578,13 @@ export class Game {
       } else if (o.ty === 'condenser') {
         o.water = Math.min(3, (o.water || 0) + step / 45);
       } else if (RESOURCES[o.ty] && o.ready === false && this.t >= o.regrowAt) {
+        // flora lies dormant through winter
+        if (winter && RESOURCES[o.ty].seasonal) { o.regrowAt = this.t + 30; continue; }
         o.hp = RESOURCES[o.ty].hits;
         this.objPatch(o, { ready: true });
       }
+      // food in crates and dropped bags spoils too (crates keep it a bit longer)
+      if (o.inv) this.decayInv(o.inv, step, (o.ty === 'crate' ? 0.6 : 1) * (coldWorld ? 0.5 : 1));
     }
   }
 
@@ -461,6 +597,7 @@ export class Game {
 
   action(p, a) {
     if (p.dead) return;
+    if (p.sleeping && a.k !== 'interact') return; // asleep: only getting up is allowed
     switch (a.k) {
       case 'attack': return this.doAttack(p, a);
       case 'interact': return this.doInteract(p, a);
@@ -503,7 +640,7 @@ export class Game {
     if (bestIsObj) {
       best.hp -= dmg;
       if (best.hp <= 0) {
-        if (best.inv) for (const s of best.inv) if (s) this.addItem(p.inv, s.id, s.n, s.uses);
+        if (best.inv) for (const s of best.inv) if (s) this.addItem(p.inv, s.id, s.n, s.uses, s.fresh);
         this.delObject(best);
         this.msg(p, `${STRUCTURES[best.ty].name} demolished.`);
       }
@@ -518,16 +655,20 @@ export class Game {
 
     switch (o.ty) {
       case 'bag': {
-        for (const s of o.inv) if (s) this.addItem(p.inv, s.id, s.n, s.uses);
+        for (const s of o.inv) if (s) this.addItem(p.inv, s.id, s.n, s.uses, s.fresh);
         this.delObject(o);
         this.msg(p, 'Picked up dropped items.');
         return;
       }
       case 'door': this.objPatch(o, { open: !o.open }); return;
-      case 'bed':
+      case 'bed': {
         p.spawn = { x: o.x + 0.5, y: o.y + 1.5 };
-        this.msg(p, 'Respawn point set to this cot.');
+        if (p.sleeping) { p.sleeping = false; this.msg(p, 'You get up.'); return; }
+        if (this.phase === PHASE.DAY) { this.msg(p, 'Respawn point set. Too bright to sleep now.'); return; }
+        p.sleeping = true;
+        this.msg(p, 'You curl up on the cot. (Sleep restores sanity — if everyone sleeps, night passes.)');
         return;
+      }
       case 'condenser': {
         if ((o.water || 0) < 1) return this.msg(p, `Condenser still collecting dew (${Math.floor((o.water || 0) * 100)}%).`);
         if (this.countItem(p.inv, 'flask_empty') < 1) return this.msg(p, 'You need an empty flask.');
@@ -642,6 +783,13 @@ export class Game {
     if (def.food || def.water) {
       if (def.food) p.hunger = clamp(p.hunger + def.food, 0, 100);
       if (def.water) p.thirst = clamp(p.thirst + def.water, 0, 100);
+      if (def.hp) p.hp = clamp(p.hp + def.hp, 0, 100);
+      if (def.sanity) p.sanity = clamp(p.sanity + def.sanity, 0, 100);
+      // stale food is less nourishing and gnaws at your mind
+      if (s.fresh != null && s.fresh < 0.35) {
+        p.hunger = clamp(p.hunger - (def.food || 0) * 0.4, 0, 100);
+        p.sanity = clamp(p.sanity - 4, 0, 100);
+      }
       if (def.sickRisk && !p.fx.parasites && this.rng() < def.sickRisk) {
         p.fx.parasites = true;
         this.msg(p, 'That was a mistake… parasites! Craft a remedy.');
@@ -740,7 +888,7 @@ export class Game {
     if (!o || o.ty !== 'crate') return;
     const s = o.inv[a.slot | 0];
     if (!s) return;
-    const left = this.addItem(p.inv, s.id, s.n, s.uses);
+    const left = this.addItem(p.inv, s.id, s.n, s.uses, s.fresh);
     if (left) { s.n = left; }
     else o.inv.splice(a.slot | 0, 1);
     p.mail.push({ t: 'crate', i: o.i, inv: o.inv });
@@ -774,6 +922,39 @@ export class Game {
     for (const c of this.creatures.values()) this.tickCreature(c, dt);
     this.spawnPass(dt);
     this.sweepObjects(dt);
+    this.trySkipNight();
+  }
+
+  // if every living player is asleep, fast-forward to dawn
+  trySkipNight() {
+    if (this.phase === PHASE.DAY) return;
+    const alive = [...this.players.values()].filter(p => !p.dead);
+    if (!alive.length || !alive.every(p => p.sleeping)) return;
+    const dayStart = Math.floor(this.t / DAY_LENGTH) * DAY_LENGTH;
+    const dawn = this.tod < 0.22 ? dayStart + 0.22 * DAY_LENGTH : dayStart + DAY_LENGTH + 0.22 * DAY_LENGTH;
+    const skipped = dawn - this.t;
+    this.t = dawn;
+    for (const o of this.objects.values()) {   // the world keeps burning/decaying while you sleep
+      if (o.ty === 'campfire' && o.lit) {
+        o.fuel -= skipped;
+        if (o.fuel <= 0) { o.fuel = 0; this.objPatch(o, { lit: false }); }
+      }
+      if (o.ty === 'condenser') o.water = Math.min(3, (o.water || 0) + skipped / 45);
+      if (o.inv) this.decayInv(o.inv, skipped, o.ty === 'crate' ? 0.6 : 1);
+    }
+    for (const p of alive) {
+      p.sleeping = false;
+      p.sanity = clamp(p.sanity + 28, 0, 100);
+      p.hp = clamp(p.hp + 10, 0, 100);
+      p.hunger = clamp(p.hunger - 14, 0, 100);
+      p.thirst = clamp(p.thirst - 8, 0, 100);
+      p.temp = 37;
+      this.decayInv(p.inv, skipped, 1);
+    }
+    // night creatures dissolve with the skipped darkness
+    for (const c of [...this.creatures.values()])
+      if (CREATURES[c.sp].night && !c.wave) this.creatures.delete(c.i);
+    this.emit({ t: 'chat', from: '🌙', m: 'The expedition sleeps. Dawn breaks on the alien world.' });
   }
 
   // ---------- serialization ----------
@@ -794,14 +975,16 @@ export class Game {
         k: 'p', id: q.id, n: q.name, x: +q.x.toFixed(2), y: +q.y.toFixed(2),
         a: +q.aim.toFixed(2), hp: Math.round(q.hp), d: q.dead ? 1 : 0,
         h: this.equipped(q, 'handSlot')?.id || null, f: q.hitCool > 0 ? 1 : 0,
+        sl: q.sleeping ? 1 : 0,
       });
     for (const c of this.creatures.values())
       if (dist2(c.x, c.y, p.x, p.y) < 28 * 28)
         ents.push({ k: 'c', id: c.i, sp: c.sp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), hp: Math.round(c.hp) });
     const you = {
       x: p.x, y: p.y, hp: p.hp, hunger: p.hunger, thirst: p.thirst, stam: p.stam,
-      temp: p.temp, fx: p.fx, inv: p.inv, handSlot: p.handSlot, bodySlot: p.bodySlot,
-      dead: p.dead, respawnIn: p.respawnIn,
+      temp: p.temp, sanity: p.sanity, fx: p.fx, inv: p.inv, handSlot: p.handSlot, bodySlot: p.bodySlot,
+      dead: p.dead, respawnIn: p.respawnIn, sleeping: p.sleeping ? 1 : 0,
+      dark: (this.phase === PHASE.NIGHT && !this.hasLight(p)) ? 1 : 0,
     };
     const snap = {
       t: 's', tod: +this.tod.toFixed(4), day: this.day, season: this.seasonIdx,
@@ -814,7 +997,8 @@ export class Game {
   save() {
     for (const p of this.players.values()) this.savedPlayers[p.name] = this.persistPlayer(p);
     return {
-      seed: this.seed, t: this.t, nextId: this.nextId,
+      v: SAVE_VERSION,
+      seed: this.seed, t: this.t, nextId: this.nextId, nextWave: this.nextWave,
       objects: [...this.objects.values()],
       team: this.team, players: this.savedPlayers,
     };

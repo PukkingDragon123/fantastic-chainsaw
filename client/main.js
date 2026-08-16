@@ -14,6 +14,7 @@ export const state = {
   buildSel: null,          // structure id while placing
   crate: null,             // {i, inv} when a crate is open
   joined: false, dead: false, respawnIn: 0,
+  hurtFlash: 0,
 };
 
 const canvas = document.getElementById('game');
@@ -54,6 +55,7 @@ function handle(m) {
     state.you = m.you;
     state.env = { tod: m.tod, day: m.day, season: m.season, amb: m.amb, night: m.night };
     state.dead = m.you.dead; state.respawnIn = m.you.respawnIn;
+    ui.noteDamage(m.you.hp);
     if (m.mail) for (const ev of m.mail) handleEvent(ev);
     if (m.ev) for (const ev of m.ev) handleEvent(ev);
     ui.refreshHUD();

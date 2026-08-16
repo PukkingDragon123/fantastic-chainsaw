@@ -55,6 +55,7 @@ class LocalSocket {
         setInterval(() => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(localGame.save())); } catch {} }, 30_000),
       ];
       addEventListener('beforeunload', () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(localGame.save())); } catch {} });
+      window.__exo = () => localGame; // debug/testing hook (solo build only)
       return;
     }
     const p = localPlayer;
@@ -86,7 +87,8 @@ const js = [
   strip(read('client/ui.js')),
   // main.js imports ui as a namespace; rebuild that object from the inlined functions
   `const ui = { onJoined, refreshHUD, togglePanel, closeAll, refreshPanels, showCrate,
-    hideCrate, showCampfire, refreshHint, log, chatFocused, toggleChat, showWin };`,
+    hideCrate, showCampfire, refreshHint, log, chatFocused, toggleChat, showWin,
+    noteDamage, openCat };`,
 ].join('\n');
 
 let html = read('client/index.html')

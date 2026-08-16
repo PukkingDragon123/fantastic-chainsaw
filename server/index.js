@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
-import { TICK_RATE, SNAP_RATE } from '../shared/defs.js';
+import { TICK_RATE, SNAP_RATE, SAVE_VERSION } from '../shared/defs.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = process.env.PORT || 3000;
@@ -16,7 +16,8 @@ let save = null;
 if (fs.existsSync(SAVE_FILE)) {
   try {
     save = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'));
-    console.log('Loaded save.json');
+    if (save?.v !== SAVE_VERSION) { console.warn('Save from an older version — starting a fresh world.'); save = null; }
+    else console.log('Loaded save.json');
   } catch (e) { console.warn('Corrupt save, starting fresh:', e.message); }
 }
 const game = new Game(save);

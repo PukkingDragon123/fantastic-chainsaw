@@ -46,23 +46,30 @@ node scripts/build-static.js
 
 ## Core mechanics
 
-- **Survival stats** — health, hunger, thirst, stamina, and **body temperature** (°C). Starvation,
-  dehydration, hypothermia, and overheating all kill. Health regenerates only when fed, hydrated, and healthy.
-- **Injuries & disease** — creature hits cause **bleeding** (bandage it, or it becomes an **infection**);
-  raw meat and unboiled water risk **parasites**; spore forests and marshes cause **spore sickness**.
-  Craft remedies at a campfire to cure.
-- **Time, seasons, day/night** — 8-minute days, 4 six-day seasons with real temperature swings
-  (winter nights hit ‑16°C — you need fire and a chitin coat). Predatory **spinehounds** hunt at night.
-- **Procedural alien world** — seeded island with 9 biomes (violet meadows, spore forests, breathing
-  marshes, crystal flats…), regrowing flora, finite wormhole-debris alloy fields.
-- **Gathering & crafting** — tools with durability (axe/pick/spear/torch), cooking, water purification,
-  three research tiers of recipes.
-- **Base building** — campfires (fuel management), walls/doors, storage crates (shared), research bench,
-  field cots (respawn points), dew condensers.
-- **Research & cataloguing** — scan every species of fauna/flora for team research points; RP unlocks
-  crafting tiers up to wormhole components.
-- **The objective** — craft and install the stabilizer core, focus lens array, and bio power cell at the
-  wormhole, then activate it to open the way home.
+- **Survival stats** — health, hunger, thirst, stamina, **sanity**, and **body temperature** (°C).
+  Starvation, dehydration, hypothermia, and overheating all kill. Health regenerates only when fed,
+  hydrated, and healthy.
+- **Sanity & the dark** — night and lurking monsters erode your mind; campfires, daylight, good meals,
+  and sleep restore it. Below 30 sanity, **phantasms** peel out of the shadows and hunt you (killing
+  one steadies your mind). In **total darkness at night something bites** — carry a torch or stay by fire.
+- **Day / dusk / night** — a segmented day clock with distinct phases and color grading. 8-minute days,
+  4 six-day seasons (winter nights hit ‑16°C and flora lies dormant). Predatory **spinehounds** hunt at
+  night, and every few days a **howling pack raid** comes for you wherever you are.
+- **Food spoilage & cooking** — perishables rot into spoiled mush (cold weather and crates slow it).
+  Cook meat and boil water at campfires; combine ingredients at the **cook pot** for hearty stews,
+  medleys, and sanity-restoring glow jelly.
+- **Injuries & disease** — bleeding → infection if untreated; parasites from raw meat/unboiled water;
+  spore sickness in marshes and spore forests. Bandages and remedies cure.
+- **Sleep** — field cots set your respawn point; sleeping restores sanity, and if the whole expedition
+  sleeps, the night passes.
+- **Procedural alien world** — seeded island, 9 biomes, regrowing flora, finite wormhole-debris alloy.
+- **Gathering & crafting** — DST-style category sidebar; tools with durability; three research tiers.
+- **Base building** — campfires (fuel), walls/doors, shared crates, research bench, cook pot, cots,
+  dew condensers.
+- **Research & cataloguing** — scan every species for team research points; RP unlocks crafting tiers
+  up to wormhole components.
+- **The objective** — craft and install the stabilizer core, focus lens array, and bio power cell at
+  the wormhole, then activate it to open the way home.
 - **Co-op** — authoritative WebSocket server, shared team research/catalogue, chat, loot-drop-on-death,
   persistent characters.
 
