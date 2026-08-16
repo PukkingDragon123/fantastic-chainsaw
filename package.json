@@ -1,0 +1,13 @@
+{
+  "name": "exoterra",
+  "version": "0.1.0",
+  "description": "2D top-down co-op survival: corporate researchers stranded on an alternate Earth through a damaged wormhole.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

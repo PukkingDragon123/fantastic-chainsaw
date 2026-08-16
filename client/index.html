@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EXO-TERRA — Research Expedition</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000;
+    font: 13px/1.4 'Segoe UI', system-ui, sans-serif; color: #dde; }
+  #game { display: block; width: 100vw; height: 100vh; }
+
+  .panel { position: absolute; background: rgba(12,16,22,.88); border: 1px solid #3a4a5a;
+    border-radius: 6px; padding: 10px; }
+
+  /* join screen */
+  #join { inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #14202e, #05080c); position: absolute; }
+  #join .box { text-align: center; width: 340px; }
+  #join h1 { font-size: 26px; letter-spacing: 3px; color: #7fd4ef; margin-bottom: 4px; }
+  #join p { color: #9ab; margin-bottom: 14px; }
+  #join input { width: 100%; padding: 8px; background: #0a121c; color: #dde;
+    border: 1px solid #3a4a5a; border-radius: 4px; margin-bottom: 10px; text-align: center; }
+  #join button { width: 100%; padding: 9px; background: #1d4f66; color: #cef;
+    border: 1px solid #7fd4ef; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  #join button:hover { background: #276a88; }
+
+  /* HUD */
+  #hud { left: 10px; top: 10px; width: 190px; }
+  .bar { height: 13px; background: #101820; border-radius: 3px; margin: 3px 0 6px;
+    overflow: hidden; position: relative; }
+  .bar > i { display: block; height: 100%; transition: width .25s; }
+  .bar > b { position: absolute; inset: 0; font-size: 10px; font-weight: normal;
+    text-align: center; line-height: 13px; color: #fff; text-shadow: 0 0 2px #000; }
+  .lbl { font-size: 10px; color: #9ab; text-transform: uppercase; letter-spacing: 1px; }
+  #fx { margin-top: 4px; font-size: 11px; color: #ff9a7a; min-height: 15px; }
+
+  #clock { right: 10px; top: 10px; text-align: right; }
+  #clock .season { font-size: 15px; color: #7fd4ef; }
+
+  /* inventory */
+  #invbar { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+    display: flex; flex-wrap: wrap; width: 466px; gap: 4px; justify-content: center; }
+  .slot { width: 50px; height: 50px; background: #101820; border: 1px solid #2a3a4a;
+    border-radius: 4px; position: relative; cursor: pointer; font-size: 9px;
+    display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px; }
+  .slot.eq { border-color: #7fd4ef; box-shadow: 0 0 6px #7fd4ef55; }
+  .slot .n { position: absolute; right: 2px; bottom: 1px; font-size: 10px; color: #ffd27f; }
+  .slot .u { position: absolute; left: 2px; bottom: 1px; font-size: 9px; color: #8fa; }
+  .slot:hover { border-color: #6a8a9a; }
+
+  /* side panels */
+  #craft, #buildmenu, #catalogue, #cratebox { right: 10px; top: 70px; width: 250px;
+    max-height: 70vh; overflow-y: auto; display: none; }
+  .rowbtn { display: block; width: 100%; text-align: left; margin: 3px 0; padding: 6px;
+    background: #16222e; color: #dde; border: 1px solid #2a3a4a; border-radius: 4px; cursor: pointer; }
+  .rowbtn:hover { background: #22323f; }
+  .rowbtn.off { opacity: .45; }
+  .rowbtn small { color: #9ab; display: block; }
+  h3 { font-size: 13px; color: #7fd4ef; margin-bottom: 6px; letter-spacing: 1px; }
+
+  /* chat + log */
+  #log { left: 10px; bottom: 10px; width: 320px; max-height: 180px; overflow: hidden;
+    background: transparent; border: 0; pointer-events: none; display: flex;
+    flex-direction: column; justify-content: flex-end; position: absolute; padding: 0; }
+  #log div { background: rgba(10,14,20,.65); border-radius: 3px; padding: 2px 6px;
+    margin-top: 2px; font-size: 12px; }
+  #log .sys { color: #ffd27f; }
+  #chatin { left: 10px; bottom: 195px; width: 320px; display: none; position: absolute; }
+  #chatin input { width: 100%; padding: 6px; background: #0a121c; color: #dde;
+    border: 1px solid #3a4a5a; border-radius: 4px; }
+
+  #hint { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%);
+    background: rgba(10,14,20,.75); padding: 3px 10px; border-radius: 4px;
+    font-size: 12px; color: #cde; display: none; }
+  #deathmsg { position: absolute; inset: 0; display: none; align-items: center;
+    justify-content: center; background: rgba(40,0,0,.45); font-size: 28px; color: #ff8a7a;
+    flex-direction: column; }
+  #winmsg { position: absolute; inset: 0; display: none; align-items: center;
+    justify-content: center; background: rgba(10,30,50,.6); font-size: 24px;
+    color: #7fd4ef; flex-direction: column; text-align: center; }
+
+  #help { left: 210px; top: 10px; font-size: 11px; color: #9ab; background: rgba(12,16,22,.6); }
+  #minimap { position: absolute; right: 10px; bottom: 10px; border: 1px solid #3a4a5a;
+    border-radius: 4px; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="join">
+  <div class="box">
+    <h1>EXO-TERRA</h1>
+    <p>Expedition 7 — wormhole transit failure.<br>Survive. Catalogue. Repair. Return.</p>
+    <input id="name" maxlength="16" placeholder="Researcher name" autofocus>
+    <button id="joinbtn">Deploy through wormhole</button>
+  </div>
+</div>
+
+<div id="hud" class="panel" style="display:none">
+  <span class="lbl">Health</span><div class="bar"><i id="b-hp" style="background:#c9403a"></i><b id="t-hp"></b></div>
+  <span class="lbl">Hunger</span><div class="bar"><i id="b-hunger" style="background:#c98a3a"></i><b id="t-hunger"></b></div>
+  <span class="lbl">Thirst</span><div class="bar"><i id="b-thirst" style="background:#3a8ac9"></i><b id="t-thirst"></b></div>
+  <span class="lbl">Stamina</span><div class="bar"><i id="b-stam" style="background:#5ac96a"></i><b id="t-stam"></b></div>
+  <span class="lbl">Body temp</span><div class="bar"><i id="b-temp" style="background:#c9c93a"></i><b id="t-temp"></b></div>
+  <div id="fx"></div>
+</div>
+
+<div id="clock" class="panel" style="display:none">
+  <div class="season" id="c-season"></div>
+  <div id="c-day"></div>
+  <div id="c-temp"></div>
+  <div id="c-rp"></div>
+</div>
+
+<div id="help" class="panel" style="display:none">
+  WASD move · Shift sprint · Click/Space attack · E interact · F scan ·
+  Q drink / G fill flask · C craft · B build · N catalogue · Enter chat
+</div>
+
+<div id="invbar" style="display:none"></div>
+<div id="craft" class="panel"><h3>CRAFT [C]</h3><div id="craftlist"></div></div>
+<div id="buildmenu" class="panel"><h3>BUILD [B]</h3><div id="buildlist"></div></div>
+<div id="catalogue" class="panel"><h3>CATALOGUE [N]</h3><div id="cataloguelist"></div></div>
+<div id="cratebox" class="panel"><h3>STORAGE CRATE</h3>
+  <div id="crateinv"></div><small style="color:#9ab">Click item to take · click your inventory to store</small></div>
+
+<div id="log"></div>
+<div id="chatin"><input id="chattext" maxlength="160" placeholder="say something…"></div>
+<div id="hint"></div>
+<div id="deathmsg"><div>YOU DIED</div><div id="deathtimer" style="font-size:16px;color:#dde"></div></div>
+<div id="winmsg"><div>🌀 WORMHOLE STABILIZED 🌀</div>
+  <div style="font-size:15px;margin-top:8px">The way home is open. Expedition 7 survives.</div></div>
+
+<script type="module" src="/main.js"></script>
+</body>
+</html>
