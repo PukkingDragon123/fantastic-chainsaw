@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>EXO-TERRA — Research Expedition (solo)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
   :root {
     --panel: rgba(24, 19, 14, .92);
@@ -14,7 +14,9 @@
     --gold: #e8c15a;
     --teal: #7fd4ef;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none;
+    -webkit-user-select: none; touch-action: manipulation; }
+  #game { touch-action: none; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000;
     font: 15px/1.35 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', cursive;
     color: var(--ink); }
@@ -164,6 +166,37 @@
 
   #minimap { position: absolute; right: 12px; bottom: 12px; border: 2px solid var(--edge);
     border-radius: 8px; image-rendering: pixelated; z-index: 5; box-shadow: 0 3px 10px rgba(0,0,0,.5); }
+
+  /* ---------- whispers (low sanity) ---------- */
+  .whisper { position: absolute; z-index: 15; pointer-events: none;
+    color: rgba(190,170,230,.0); font-size: 21px; letter-spacing: 2px;
+    text-shadow: 0 0 14px rgba(140,100,200,.8); transition: color 2.4s, filter 2.4s;
+    filter: blur(3px); }
+  .whisper.fade { color: rgba(190,170,230,.75); filter: blur(0.6px); }
+
+  /* ---------- touch controls ---------- */
+  #joy { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 9; }
+  #joybase { position: absolute; width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(20,16,12,.35); border: 2px solid rgba(160,140,110,.4); }
+  #joystick { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px;
+    border-radius: 50%; background: rgba(200,180,140,.45); border: 2px solid rgba(230,210,170,.6); }
+  #mbtns { position: absolute; right: 8px; bottom: 8px; display: grid;
+    grid-template-columns: repeat(2, 56px); gap: 8px; z-index: 9; }
+  .mbtn { width: 56px; height: 56px; border-radius: 50%; background: var(--panel);
+    border: 2px solid var(--edge); font-size: 23px; box-shadow: 0 3px 8px rgba(0,0,0,.5); }
+  .mbtn.on { border-color: var(--gold); box-shadow: 0 0 12px rgba(232,193,90,.5); }
+
+  /* compact layout on small / touch screens */
+  body.mobile #help { display: none !important; }
+  body.mobile #minimap { width: 88px !important; height: 88px !important; right: 10px; top: 10px; bottom: auto; }
+  body.mobile #topright { right: 108px; transform: scale(.72); transform-origin: top right; }
+  body.mobile #invbar { width: 400px; }
+  body.mobile .slot { width: 36px; height: 36px; font-size: 17px; }
+  body.mobile #bottom { bottom: 6px; }
+  body.mobile #log { width: 230px; font-size: 11px; max-height: 92px; bottom: 8px; }
+  body.mobile #hint { bottom: 96px; font-size: 11px; }
+  body.mobile #craftbar { transform: translateY(-50%) scale(.85); transform-origin: left center; }
+  body.mobile #craftpanel { width: 226px; max-height: 82vh; }
 </style>
 </head>
 <body>
@@ -314,15 +347,15 @@ const T = {
   SPORE: 5, MARSH: 6, ROCK: 7, CRYSTAL: 8,
 };
 const TILE_INFO = {
-  [T.DEEP]:    { name: 'Deep water',      color: '#123a5c', walk: false, water: true },
-  [T.WATER]:   { name: 'Shallow water',   color: '#1d6d9e', walk: false, water: true },
-  [T.SAND]:    { name: 'Ashen shore',     color: '#cbb375', walk: true },
-  [T.GRASS]:   { name: 'Pale sward',      color: '#7ba05b', walk: true },
-  [T.MEADOW]:  { name: 'Violet meadow',   color: '#8d80b8', walk: true },
-  [T.SPORE]:   { name: 'Spore forest',    color: '#47654e', walk: true, tempMod: 1, sporeRisk: true },
-  [T.MARSH]:   { name: 'Breathing marsh', color: '#566b42', walk: true, tempMod: 2, slow: 0.6, sporeRisk: true },
-  [T.ROCK]:    { name: 'Grey barrens',    color: '#7d7d84', walk: true, tempMod: -2 },
-  [T.CRYSTAL]: { name: 'Crystal flats',   color: '#6c93ad', walk: true, tempMod: -4 },
+  [T.DEEP]:    { name: 'Deep water',      color: '#0a1d30', walk: false, water: true },
+  [T.WATER]:   { name: 'Shallow water',   color: '#143c54', walk: false, water: true },
+  [T.SAND]:    { name: 'Ashen shore',     color: '#7d6c48', walk: true },
+  [T.GRASS]:   { name: 'Pale sward',      color: '#4c6338', walk: true },
+  [T.MEADOW]:  { name: 'Violet meadow',   color: '#575073', walk: true },
+  [T.SPORE]:   { name: 'Spore forest',    color: '#2b3d31', walk: true, tempMod: 1, sporeRisk: true },
+  [T.MARSH]:   { name: 'Breathing marsh', color: '#37422b', walk: true, tempMod: 2, slow: 0.6, sporeRisk: true },
+  [T.ROCK]:    { name: 'Grey barrens',    color: '#4b4b52', walk: true, tempMod: -2 },
+  [T.CRYSTAL]: { name: 'Crystal flats',   color: '#3e5a70', walk: true, tempMod: -4 },
 };
 
 // ---- items ----
@@ -407,16 +440,16 @@ const CREATURES = {
   skitterling: { name: 'Skitterling',   emoji: '🦗', hp: 20, speed: 3.2, dmg: 0,  aggro: 0, flee: true,
     drops: [{ item: 'raw_meat', n: 1, p: 1 }, { item: 'hide', n: 1, p: 0.5 }],
     tiles: [T.GRASS, T.MEADOW], rp: 15, color: '#c9b458', r: 0.35 },
-  grazer:      { name: 'Duskgrazer',    emoji: '🦌', hp: 60, speed: 2.4, dmg: 8,  aggro: 0, retaliate: true,
+  grazer:      { name: 'Duskgrazer',    emoji: '🦌', hp: 60, speed: 2.4, dmg: 8,  aggro: 0, retaliate: true, herd: true,
     drops: [{ item: 'raw_meat', n: 2, p: 1 }, { item: 'hide', n: 2, p: 0.8 }],
     tiles: [T.MEADOW, T.GRASS], rp: 15, color: '#a284c9', r: 0.55 },
-  spinehound:  { name: 'Spinehound',    emoji: '🐺', hp: 45, speed: 4.2, dmg: 12, aggro: 8, night: true,
+  spinehound:  { name: 'Spinehound',    emoji: '🐺', hp: 45, speed: 4.2, dmg: 12, aggro: 8, night: true, circle: true,
     drops: [{ item: 'raw_meat', n: 1, p: 1 }, { item: 'hide', n: 1, p: 0.6 }],
     tiles: [T.GRASS, T.MEADOW, T.SPORE, T.ROCK], rp: 20, color: '#b0453a', r: 0.45 },
-  marsh_lurker:{ name: 'Marsh lurker',  emoji: '🐊', hp: 70, speed: 3.0, dmg: 15, aggro: 5,
+  marsh_lurker:{ name: 'Marsh lurker',  emoji: '🐊', hp: 70, speed: 3.4, dmg: 15, aggro: 5, ambush: true,
     drops: [{ item: 'raw_meat', n: 2, p: 1 }, { item: 'glow_spores', n: 2, p: 1 }],
     tiles: [T.MARSH], rp: 20, color: '#5a8a5e', r: 0.55 },
-  crystal_wisp:{ name: 'Crystal wisp',  emoji: '✨', hp: 30, speed: 4.6, dmg: 0,  aggro: 0, flee: true,
+  crystal_wisp:{ name: 'Crystal wisp',  emoji: '✨', hp: 30, speed: 4.6, dmg: 0,  aggro: 0, flee: true, blink: true,
     drops: [{ item: 'crystal', n: 2, p: 1 }],
     tiles: [T.CRYSTAL, T.ROCK], rp: 20, color: '#9fe3f2', r: 0.35 },
   phantasm:    { name: 'Phantasm',      emoji: '🌑', hp: 40, speed: 4.8, dmg: 10, aggro: 12, shadow: true,
@@ -433,6 +466,8 @@ const RESOURCES = {
   pulse_bush: { name: 'Pulse-fruit bush',  emoji: '🫐', tool: null,   hits: 1, drop: { pulse_fruit: 2 }, regrow: 240, block: false, rp: 8, color: '#c9639c', seasonal: true },
   glowshroom: { name: 'Glowshroom ring',   emoji: '🍄', tool: null,   hits: 1, drop: { glow_spores: 2 }, regrow: 260, block: false, rp: 8, color: '#84e8c0', seasonal: true },
   debris:     { name: 'Wormhole debris',   emoji: '🛸', tool: 'pick', hits: 3, drop: { alloy: 1 }, regrow: 0, block: true, rp: 10, color: '#d29a45' },
+  monolith:   { name: 'Whisper monolith',  emoji: '🗿', tool: null,   hits: 0, drop: {}, regrow: 0, block: true, rp: 18, color: '#2e2a3c', aura: true },
+  remains:    { name: 'Chitin remains',    emoji: '🦴', tool: null,   hits: 1, drop: { hide: 2 }, regrow: 900, block: false, rp: 8, color: '#b8ad94' },
 };
 
 // wormhole repair — all three parts must be installed, then activated
@@ -478,8 +513,8 @@ function makeNoise(rng, gridStep) {
 
 function generateWorld(seed) {
   const rng = mulberry32(seed);
-  const elev1 = makeNoise(rng, 24), elev2 = makeNoise(rng, 8);
-  const moist = makeNoise(rng, 18);
+  const elev1 = makeNoise(rng, 24), elev2 = makeNoise(rng, 8), elev3 = makeNoise(rng, 3);
+  const moist = makeNoise(rng, 18), moist2 = makeNoise(rng, 5);
   const strange = makeNoise(rng, 14);
 
   const tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -490,8 +525,8 @@ function generateWorld(seed) {
       // island falloff so the map edge is ocean
       const dx = (x - cx) / cx, dy = (y - cy) / cy;
       const edge = Math.max(0, 1 - (dx * dx + dy * dy) * 1.15);
-      const e = (elev1(x, y) * 0.7 + elev2(x, y) * 0.3) * edge;
-      const m = moist(x, y);
+      const e = (elev1(x, y) * 0.62 + elev2(x, y) * 0.28 + elev3(x, y) * 0.10) * edge;
+      const m = moist(x, y) * 0.8 + moist2(x, y) * 0.2;
       const s = strange(x, y);
       let t;
       if (e < 0.16) t = T.DEEP;
@@ -548,6 +583,26 @@ function generateWorld(seed) {
     }
   }
 
+  // Whisper monoliths: ancient standing stones ringed by chitin remains.
+  // Something died at every one of them.
+  let placedMono = 0, monoGuard = 0;
+  while (placedMono < 12 && monoGuard++ < 800) {
+    const x = 8 + Math.floor(rng() * (WORLD_W - 16)), y = 8 + Math.floor(rng() * (WORLD_H - 16));
+    if (Math.abs(x - wx) < 14 && Math.abs(y - wy) < 14) continue; // not near the landing zone
+    const t = tiles[y * WORLD_W + x];
+    if (t === T.DEEP || t === T.WATER || t === T.SAND) continue;
+    place('monolith', x, y);
+    placedMono++;
+    const bones = 2 + Math.floor(rng() * 3);
+    for (let b = 0; b < bones; b++) {
+      const bx = x + Math.floor((rng() - 0.5) * 7), by = y + Math.floor((rng() - 0.5) * 7);
+      if (bx < 1 || by < 1 || bx >= WORLD_W - 1 || by >= WORLD_H - 1) continue;
+      const bt = tiles[by * WORLD_W + bx];
+      if (bt === T.DEEP || bt === T.WATER) continue;
+      place('remains', bx, by);
+    }
+  }
+
   // Wormhole debris fields: alloy comes only from scattered crash debris.
   for (let k = 0; k < 26; k++) {
     const ang = rng() * Math.PI * 2, dist = 15 + rng() * 70;
@@ -568,6 +623,18 @@ function generateWorld(seed) {
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
+
+// heard only by the nearly-mad
+const WHISPERS = [
+  'The trees are counting you.',
+  'Something keeps repeating your name, slightly wrong.',
+  'Do not look at the seams of the sky.',
+  'The ground breathes slower when you stand still.',
+  'It has learned your footsteps.',
+  'The light here is thinner than it should be.',
+  'You buried something. You don’t remember what.',
+  'The wormhole dreams, and you are in the dream.',
+];
 
 class Game {
   constructor(save) {
@@ -821,7 +888,19 @@ class Game {
       state: 'idle', tx: x, ty: y, think: this.rng() * 2, atkCool: 0, target: 0,
       home: { x, y },
     };
+    if (def.ambush) c.hidden = true;     // lurkers wait submerged
+    if (def.blink) c.blinkT = 0;
     this.creatures.set(c.i, c);
+    // herd animals arrive as a small group
+    if (def.herd && !this._herding) {
+      this._herding = true;
+      const extra = 1 + Math.floor(this.rng() * 2);
+      for (let k = 0; k < extra; k++) {
+        const hx = x + (this.rng() - 0.5) * 4, hy = y + (this.rng() - 0.5) * 4;
+        if (this.walkable(hx, hy)) this.spawnCreature(sp, hx, hy);
+      }
+      this._herding = false;
+    }
     return c;
   }
   killCreature(c, killer) {
@@ -867,13 +946,44 @@ class Game {
         if (d < bd) { bd = d; best = p; }
       }
       const d = Math.sqrt(bd);
+
+      // ambush predators lie hidden until prey wanders close
+      if (c.hidden) {
+        if (best && d < 2.6) {
+          c.hidden = false; c.state = 'chase'; c.target = best.id; c.burst = true;
+          this.msg(best, 'The marsh erupts — something was waiting for you!');
+        }
+        return; // stay perfectly still
+      }
+
       if (c.state === 'flee') {
         if (d > 12 || !best) c.state = 'idle';
-        else { c.tx = c.x + (c.x - best.x) / d * 6; c.ty = c.y + (c.y - best.y) / d * 6; }
+        else {
+          c.tx = c.x + (c.x - best.x) / d * 6; c.ty = c.y + (c.y - best.y) / d * 6;
+          if (def.blink) { // wisps flicker out of reach
+            c.blinkT -= 0.45 + this.rng() * 0.4;
+            if (c.blinkT <= 0) {
+              c.blinkT = 2;
+              const bx = c.x + (c.x - best.x) / d * 4.5 + (this.rng() - 0.5) * 2;
+              const by = c.y + (c.y - best.y) / d * 4.5 + (this.rng() - 0.5) * 2;
+              if (this.walkable(bx, by)) { c.x = bx; c.y = by; }
+            }
+          }
+        }
       } else if (c.state === 'chase') {
         if (!best || d > 14) { c.state = 'idle'; }
-        else { c.tx = best.x; c.ty = best.y; c.target = best.id; }
+        else {
+          c.target = best.id;
+          // hounds prowl in arcs around prey before committing
+          if (def.circle && d > 1.4 && d < 4.5 && this.rng() < 0.45) {
+            const px = (best.y - c.y) / d, py = -(best.x - c.x) / d; // perpendicular
+            const side = (c.i % 2 === 0 ? 1 : -1);
+            c.tx = best.x + px * 2.5 * side; c.ty = best.y + py * 2.5 * side;
+          } else { c.tx = best.x; c.ty = best.y; }
+        }
       } else {
+        // a calmed ambusher slides back under the surface
+        if (def.ambush && this.tileAt(c.x, c.y) === T.MARSH && (!best || d > 8)) { c.hidden = true; return; }
         if (best && def.aggro && d < def.aggro) { c.state = 'chase'; }
         else if (this.rng() < 0.3) { // wander near home
           c.tx = c.home.x + (this.rng() - 0.5) * 8;
@@ -881,6 +991,7 @@ class Game {
         }
       }
     }
+    if (c.hidden) return; // submerged: no movement, no attacks
 
     // movement toward (tx,ty) — phantasms drift through everything
     const dx = c.tx - c.x, dy = c.ty - c.y;
@@ -901,7 +1012,9 @@ class Game {
       const p = this.players.get(c.target);
       if (p && !p.dead && dist2(p.x, p.y, c.x, c.y) < 1.1) {
         c.atkCool = 1.2;
-        this.hurtPlayer(p, def.dmg, def.name);
+        const dmg = c.burst ? Math.round(def.dmg * 1.5) : def.dmg; // ambush strike hits harder
+        c.burst = false;
+        this.hurtPlayer(p, dmg, def.name);
         if (this.rng() < 0.3 && !p.fx.bleed) { p.fx.bleed = true; p.fx.bleedT = 0; this.msg(p, 'You are bleeding! Use a bandage.'); }
       }
     }
@@ -915,6 +1028,7 @@ class Game {
   }
   hurtCreature(c, dmg, attacker) {
     c.hp -= dmg;
+    c.hidden = false; // no hiding once struck
     if (c.hp <= 0) { this.killCreature(c, attacker); return; }
     const def = CREATURES[c.sp];
     if (def.flee) c.state = 'flee';
@@ -1058,7 +1172,23 @@ class Game {
       const def = CREATURES[c.sp];
       if ((def.aggro || def.shadow) && dist2(c.x, c.y, p.x, p.y) < 36) { dsan -= def.shadow ? 0.14 : 0.07; break; }
     }
+    // whisper monoliths gnaw at the mind of anyone standing close
+    for (const o of this.objects.values())
+      if (RESOURCES[o.ty]?.aura && dist2(o.x + 0.5, o.y + 0.5, p.x, p.y) < 16) {
+        dsan -= 0.12;
+        if (!p.nearMono) { p.nearMono = true; this.msg(p, 'The monolith is murmuring. Not in any language. Not to you. Probably.'); }
+        break;
+      }
+    if (dsan >= 0) p.nearMono = false;
     p.sanity = clamp(p.sanity + dsan * dt * 2.2, 0, 100);
+
+    // the whispers come when the mind frays
+    p.whisperT = (p.whisperT || 0) - dt;
+    if (p.sanity < 25 && p.whisperT <= 0) {
+      p.whisperT = 18 + this.rng() * 14;
+      const w = WHISPERS[Math.floor(this.rng() * WHISPERS.length)];
+      p.mail.push({ t: 'whisper', m: w });
+    }
 
     // --- food spoilage in your pack ---
     this.decayInv(p.inv, dt, this.ambientAt(p.x, p.y) < 5 ? 0.5 : 1);
@@ -1264,6 +1394,7 @@ class Game {
 
   doGather(p, o) {
     const def = RESOURCES[o.ty];
+    if (def.aura) return this.msg(p, 'The monolith does not move. Something behind your eyes does. Scan it — from a distance.');
     if (o.ready === false) return this.msg(p, `${def.name} is depleted.`);
     if (p.stam < 4) return this.msg(p, 'Too exhausted.');
     const tool = this.handTool(p);
@@ -1536,8 +1667,11 @@ class Game {
         sl: q.sleeping ? 1 : 0,
       });
     for (const c of this.creatures.values())
-      if (dist2(c.x, c.y, p.x, p.y) < 28 * 28)
-        ents.push({ k: 'c', id: c.i, sp: c.sp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), hp: Math.round(c.hp) });
+      if (dist2(c.x, c.y, p.x, p.y) < 28 * 28) {
+        const e = { k: 'c', id: c.i, sp: c.sp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), hp: Math.round(c.hp) };
+        if (c.hidden) e.hid = 1;
+        ents.push(e);
+      }
     const you = {
       x: p.x, y: p.y, hp: p.hp, hunger: p.hunger, thirst: p.thirst, stam: p.stam,
       temp: p.temp, sanity: p.sanity, fx: p.fx, inv: p.inv, handSlot: p.handSlot, bodySlot: p.bodySlot,
@@ -1579,6 +1713,10 @@ const state = {
   crate: null,             // {i, inv} when a crate is open
   joined: false, dead: false, respawnIn: 0,
   hurtFlash: 0,
+  zoom: 1.7,               // close, claustrophobic camera (mouse wheel adjusts)
+  shake: 0,                // camera shake on damage
+  touch: null,             // {mx,my} from the virtual joystick
+  sprintLock: false,       // mobile sprint toggle
 };
 
 const canvas = document.getElementById('game');
@@ -1635,6 +1773,7 @@ function handleEvent(ev) {
     case 'obj*': { const o = state.objects.get(ev.i); if (o) Object.assign(o, ev.p); break; }
     case 'team': state.team = ev.team; ui.refreshPanels(); break;
     case 'msg': ui.log('sys', ev.m); break;
+    case 'whisper': ui.showWhisper(ev.m); break;
     case 'chat': ui.log('chat', `${ev.from}: ${ev.m}`); break;
     case 'crate': state.crate = { i: ev.i, inv: ev.inv }; ui.showCrate(); break;
     case 'win': ui.showWin(); break;
@@ -1698,13 +1837,31 @@ canvas.addEventListener('mousedown', (e) => {
 addEventListener('contextmenu', e => e.preventDefault());
 
 function mouseTile() {
+  const z = TILE * state.zoom;
   return [
-    Math.floor((state.mouse.x - canvas.width / 2) / TILE + myPos.x),
-    Math.floor((state.mouse.y - canvas.height / 2) / TILE + myPos.y),
+    Math.floor((state.mouse.x - canvas.width / 2) / z + myPos.x),
+    Math.floor((state.mouse.y - canvas.height / 2) / z + myPos.y),
   ];
 }
 
-function doAttack() { act('attack', { aim: state.aim }); }
+addEventListener('wheel', (e) => {
+  if (!state.joined) return;
+  state.zoom = Math.max(1.2, Math.min(2.4, state.zoom - Math.sign(e.deltaY) * 0.15));
+}, { passive: true });
+
+// aim at the nearest creature when attacking without a pointer (mobile)
+function autoAim() {
+  let best = null, bd = 4 * 4;
+  if (state.snapB) for (const e of state.snapB) {
+    if (e.k !== 'c') continue;
+    const d = (e.x - myPos.x) ** 2 + (e.y - myPos.y) ** 2;
+    if (d < bd) { bd = d; best = e; }
+  }
+  if (best) state.aim = Math.atan2(best.y - myPos.y, best.x - myPos.x);
+  return state.aim;
+}
+
+function doAttack() { state.attackAnim = performance.now(); act('attack', { aim: state.aim }); }
 
 // nearest interactable object within reach — the client proposes, the server validates
 function nearestInteractable() {
@@ -1727,10 +1884,72 @@ function doInteract() {
 // ---------- loops ----------
 setInterval(() => { // input stream to server
   if (!state.joined) return;
-  const mx = (state.keys.has('right') ? 1 : 0) - (state.keys.has('left') ? 1 : 0);
-  const my = (state.keys.has('down') ? 1 : 0) - (state.keys.has('up') ? 1 : 0);
-  send({ t: 'i', mx, my, sprint: state.keys.has('sprint'), aim: state.aim });
+  let mx = (state.keys.has('right') ? 1 : 0) - (state.keys.has('left') ? 1 : 0);
+  let my = (state.keys.has('down') ? 1 : 0) - (state.keys.has('up') ? 1 : 0);
+  if (state.touch) { mx = state.touch.mx; my = state.touch.my; }
+  if (state.touch && (mx || my)) state.aim = Math.atan2(my, mx); // face where you walk
+  send({ t: 'i', mx, my, sprint: state.keys.has('sprint') || state.sprintLock, aim: state.aim });
 }, 50);
+
+// ---------- touch controls ----------
+if ('ontouchstart' in window) initTouch();
+function initTouch() {
+  document.body.classList.add('mobile');
+  const joy = document.createElement('div'); joy.id = 'joy';
+  joy.innerHTML = '<div id="joybase"><div id="joystick"></div></div>';
+  document.body.appendChild(joy);
+  const btns = document.createElement('div'); btns.id = 'mbtns';
+  const B = (label, title, fn, hold) => {
+    const b = document.createElement('button');
+    b.className = 'mbtn'; b.textContent = label; b.title = title;
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); fn(b); }, { passive: false });
+    btns.appendChild(b);
+    return b;
+  };
+  B('⚔️', 'attack', () => { autoAim(); doAttack(); });
+  B('✋', 'interact', () => doInteract());
+  B('📡', 'scan', () => act('scan'));
+  B('💧', 'drink', () => act('drink'));
+  B('🏃', 'sprint', (b) => { state.sprintLock = !state.sprintLock; b.classList.toggle('on', state.sprintLock); });
+  document.body.appendChild(btns);
+
+  const base = joy.querySelector('#joybase'), stick = joy.querySelector('#joystick');
+  let origin = null, touchId = null;
+  addEventListener('touchstart', (e) => {
+    if (!state.joined) return;
+    for (const t of e.changedTouches) {
+      if (t.clientX < innerWidth * 0.45 && t.clientY > innerHeight * 0.3 && touchId === null) {
+        touchId = t.identifier;
+        origin = { x: t.clientX, y: t.clientY };
+        joy.style.display = 'block';
+        base.style.left = (t.clientX - 60) + 'px'; base.style.top = (t.clientY - 60) + 'px';
+      }
+    }
+  }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    if (touchId === null) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier !== touchId) continue;
+      const dx = t.clientX - origin.x, dy = t.clientY - origin.y;
+      const d = Math.hypot(dx, dy), max = 52;
+      const f = d > 10 ? Math.min(1, d / max) : 0; // deadzone
+      state.touch = d > 10 ? { mx: dx / d * f, my: dy / d * f } : { mx: 0, my: 0 };
+      const cd = Math.min(d, max);
+      stick.style.transform = `translate(${d ? dx / d * cd : 0}px, ${d ? dy / d * cd : 0}px)`;
+    }
+  }, { passive: true });
+  const endTouch = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === touchId) {
+        touchId = null; state.touch = { mx: 0, my: 0 };
+        stick.style.transform = 'translate(0,0)';
+        joy.style.display = 'none';
+      }
+    }
+  };
+  addEventListener('touchend', endTouch, { passive: true });
+  addEventListener('touchcancel', endTouch, { passive: true });
+}
 
 function frame() {
   requestAnimationFrame(frame);
@@ -1825,19 +2044,31 @@ const shadow = (ctx, x, y, rx, ry) => {
 function render(ctx, canvas, state) {
   const W = canvas.width, H = canvas.height;
   const now = performance.now() / 1000;
-  const camX = myPos.x * TILE - W / 2, camY = myPos.y * TILE - H / 2;
-  const sx = wx => wx * TILE - camX, sy = wy => wy * TILE - camY;
   const phase = phaseOf(state.env.tod);
 
+  // ---- close, unsteady camera: zoom + damage shake + insanity sway ----
+  const Z = state.zoom || 1.7;
+  state.shake = Math.max(0, (state.shake || 0) * 0.88 - 0.004);
+  const sanity = state.you?.sanity ?? 100;
+  const swayA = Math.max(0, 45 - sanity) / 45;
+  const swx = Math.sin(now * 0.9) * 13 * swayA + (Math.random() - 0.5) * 24 * state.shake;
+  const swy = Math.cos(now * 0.63) * 9 * swayA + (Math.random() - 0.5) * 24 * state.shake;
+  const camCx = myPos.x * TILE + swx, camCy = myPos.y * TILE + swy;
+  const ox = W / 2 - camCx * Z, oy = H / 2 - camCy * Z;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#04060a'; ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(Z, 0, 0, Z, ox, oy);
+  const sx = wx => wx * TILE, sy = wy => wy * TILE; // world-pixel coords under the transform
+
   // ---- terrain ----
-  const x0 = Math.max(0, Math.floor(camX / TILE)), y0 = Math.max(0, Math.floor(camY / TILE));
-  const x1 = Math.min(state.w - 1, Math.ceil((camX + W) / TILE)), y1 = Math.min(state.h - 1, Math.ceil((camY + H) / TILE));
-  ctx.fillStyle = '#06090d'; ctx.fillRect(0, 0, W, H);
+  const halfW = W / (2 * Z * TILE) + 1.5, halfH = H / (2 * Z * TILE) + 1.5;
+  const x0 = Math.max(0, Math.floor(myPos.x - halfW)), y0 = Math.max(0, Math.floor(myPos.y - halfH));
+  const x1 = Math.min(state.w - 1, Math.ceil(myPos.x + halfW)), y1 = Math.min(state.h - 1, Math.ceil(myPos.y + halfH));
   for (let y = y0; y <= y1; y++)
     for (let x = x0; x <= x1; x++) {
       const t = state.tiles[y * state.w + x];
       const h = hash(x, y);
-      const px = x * TILE - camX, py = y * TILE - camY;
+      const px = x * TILE, py = y * TILE;
       ctx.fillStyle = tileColor(TILE_INFO[t].color, h * 0.55 + 0.22);
       ctx.fillRect(px, py, TILE + 1, TILE + 1);
       drawDecor(ctx, t, h, px, py, now, state.env.season);
@@ -1885,10 +2116,12 @@ function render(ctx, canvas, state) {
   const darkness = nightAlpha(state.env.tod);
   if (darkness > 0.02) {
     if (lightCv.width !== W || lightCv.height !== H) { lightCv.width = W; lightCv.height = H; }
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
     lctx.globalCompositeOperation = 'source-over';
     lctx.clearRect(0, 0, W, H);
-    lctx.fillStyle = `rgba(6,9,22,${darkness})`;
+    lctx.fillStyle = `rgba(4,6,18,${darkness})`;
     lctx.fillRect(0, 0, W, H);
+    lctx.setTransform(Z, 0, 0, Z, ox, oy); // light holes in world space
     lctx.globalCompositeOperation = 'destination-out';
     const flick = 1 + Math.sin(now * 11) * 0.04 + Math.sin(now * 23) * 0.03;
     for (const o of state.objects.values()) {
@@ -1896,31 +2129,48 @@ function render(ctx, canvas, state) {
       if (o.ty === 'wormhole') light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 5.5, 0.95);
       if (o.ty === 'crystal_node' && o.ready !== false) light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 1.6, 0.55);
       if (o.ty === 'glowshroom' && o.ready !== false) light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 1.8, 0.6);
+      if (RESOURCES[o.ty]?.aura) light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 1.4, 0.35); // monoliths glow faintly wrong
     }
     for (const e of lerpedEnts()) {
-      if (e.k === 'p' && !e.d) light(lctx, sx(e.x), sy(e.y), e.h === 'torch' ? TILE * 5.5 * flick : TILE * 1.8, e.h === 'torch' ? 1 : 0.65);
+      if (e.k === 'p' && !e.d) light(lctx, sx(e.x), sy(e.y), e.h === 'torch' ? TILE * 5.2 * flick : TILE * 1.5, e.h === 'torch' ? 1 : 0.55);
       if (e.k === 'c' && e.sp === 'crystal_wisp') light(lctx, sx(e.x), sy(e.y), TILE * 2.2, 0.75);
     }
     lctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(lightCv, 0, 0);
-    // warm glow over fires
+    // warm glow over fires (under the darkness mask)
     for (const o of state.objects.values())
       if (o.ty === 'campfire' && o.lit) {
         const g = ctx.createRadialGradient(sx(o.x + 0.5), sy(o.y + 0.5), 0, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 4);
-        g.addColorStop(0, `rgba(255,150,50,${0.15 * darkness})`); g.addColorStop(1, 'rgba(255,150,50,0)');
+        g.addColorStop(0, `rgba(255,150,50,${0.16 * darkness})`); g.addColorStop(1, 'rgba(255,150,50,0)');
         ctx.fillStyle = g;
         ctx.fillRect(sx(o.x + 0.5) - TILE * 4, sy(o.y + 0.5) - TILE * 4, TILE * 8, TILE * 8);
       }
-  }
-  // dusk / dawn warm grading
-  if (phase === 'dusk') {
-    ctx.fillStyle = 'rgba(230,120,40,0.10)'; ctx.fillRect(0, 0, W, H);
-  } else if (state.env.tod > 0.20 && state.env.tod < 0.27) {
-    ctx.fillStyle = 'rgba(255,180,110,0.08)'; ctx.fillRect(0, 0, W, H);
-  }
-  // season tint
-  const tint = ['rgba(140,220,140,0.03)', 'rgba(255,210,120,0.05)', 'rgba(210,130,60,0.07)', 'rgba(190,215,255,0.14)'][state.env.season];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(lightCv, 0, 0);
+  } else ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // ---- screen-space grading: overcast gloom, dusk, season, fog, grain ----
+  ctx.fillStyle = 'rgba(8,12,16,0.10)'; ctx.fillRect(0, 0, W, H); // permanent overcast
+  if (phase === 'dusk') { ctx.fillStyle = 'rgba(200,90,30,0.12)'; ctx.fillRect(0, 0, W, H); }
+  else if (state.env.tod > 0.20 && state.env.tod < 0.27) { ctx.fillStyle = 'rgba(255,170,100,0.07)'; ctx.fillRect(0, 0, W, H); }
+  const tint = ['rgba(110,180,110,0.03)', 'rgba(230,190,110,0.04)', 'rgba(190,110,50,0.07)', 'rgba(170,195,235,0.13)'][state.env.season];
   ctx.fillStyle = tint; ctx.fillRect(0, 0, W, H);
+
+  // drifting ground-fog banks
+  const fogA = 0.10 + darkness * 0.16 + swayA * 0.06;
+  for (let i = 0; i < 3; i++) {
+    const fx = ((now * (7 + i * 4) + i * 700) % (W + 700)) - 350;
+    const fy = H * (0.2 + i * 0.3) + Math.sin(now * 0.24 + i * 2) * 60;
+    const fr = 250 + i * 110;
+    const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, fr);
+    g.addColorStop(0, `rgba(10,14,20,${fogA})`); g.addColorStop(1, 'rgba(10,14,20,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(fx - fr, fy - fr, fr * 2, fr * 2);
+  }
+  // film grain
+  ctx.fillStyle = 'rgba(255,255,255,0.028)';
+  for (let i = 0; i < 70; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let i = 0; i < 50; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 2, 1);
 
   // ---- minimap ----
   if (miniDone) {
@@ -1981,11 +2231,25 @@ function drawDecor(ctx, t, h, px, py, now, season) {
     ctx.fillStyle = 'rgba(120,100,60,.5)';
     ctx.fillRect(px + (h * 87) % TILE, py + (h * 43) % TILE, 2, 2);
   }
+  // sparse extra detail: pale flowers in meadows, pebbles on sward
+  if (t === T.MEADOW && h > 0.30 && h < 0.345) {
+    const fx = px + (h * 233) % TILE, fy = py + (h * 149) % TILE;
+    ctx.fillStyle = 'rgba(200,180,230,.55)';
+    for (let k = 0; k < 4; k++) {
+      const fa = k * TAU / 4 + h * 9;
+      ctx.beginPath(); ctx.arc(fx + Math.cos(fa) * 2.2, fy + Math.sin(fa) * 2.2, 1.3, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(240,220,150,.7)';
+    ctx.beginPath(); ctx.arc(fx, fy, 1.2, 0, TAU); ctx.fill();
+  } else if (t === T.GRASS && h > 0.30 && h < 0.33) {
+    ctx.fillStyle = 'rgba(70,80,60,.6)';
+    ctx.beginPath(); ctx.ellipse(px + (h * 177) % TILE, py + (h * 119) % TILE, 2.6, 1.7, 0, 0, TAU); ctx.fill();
+  }
 }
 
 function nightAlpha(tod) {
   const d = Math.cos(tod * TAU) * 0.5 + 0.5; // 1 at midnight, 0 at noon
-  return Math.max(0, d - 0.22) * 1.06;
+  return Math.max(0, d - 0.18) * 1.13; // nights are properly black now
 }
 
 function light(ctx, x, y, r, strength) {
@@ -2063,6 +2327,31 @@ function drawObject(ctx, o, px, py, state, now) {
           ctx.beginPath(); ctx.arc(px + dx, py + dy, 2.6, 0, TAU); ctx.fill();
         }
       }
+    } else if (o.ty === 'monolith') {
+      shadow(ctx, px, py + 12, 13, 5);
+      ctx.fillStyle = '#242031';
+      ctx.beginPath();
+      ctx.moveTo(px - 8, py + 12); ctx.lineTo(px - 6, py - 22); ctx.lineTo(px - 1, py - 27);
+      ctx.lineTo(px + 6, py - 20); ctx.lineTo(px + 8, py + 12);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#151221'; ctx.stroke();
+      const gl = 0.35 + Math.sin(now * 0.9 + h * 7) * 0.25; // rune-scratches that shouldn't glow
+      ctx.strokeStyle = `rgba(150,120,220,${gl})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(px - 3, py - 18); ctx.lineTo(px + 2, py - 14); ctx.lineTo(px - 2, py - 9);
+      ctx.moveTo(px + 3, py - 4); ctx.lineTo(px - 3, py + 1); ctx.lineTo(px + 2, py + 6);
+      ctx.stroke(); ctx.lineWidth = 1;
+    } else if (o.ty === 'remains') {
+      ctx.strokeStyle = '#b8ad94'; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.arc(px - 3, py, 7, Math.PI * 1.15, Math.PI * 1.95); ctx.stroke(); // rib arcs
+      ctx.beginPath(); ctx.arc(px + 2, py + 1, 6, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - 8, py + 5); ctx.lineTo(px + 9, py + 3); ctx.stroke(); // spine
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#b8ad94';
+      ctx.beginPath(); ctx.arc(px + 11, py + 2, 3.2, 0, TAU); ctx.fill(); // skull-ish knob
+      ctx.fillStyle = '#3a3428';
+      ctx.beginPath(); ctx.arc(px + 10.5, py + 1.5, 1, 0, TAU); ctx.fill();
     } else if (o.ty === 'glowshroom') {
       const glow = 0.55 + Math.sin(now * 1.7 + h * 14) * 0.25;
       ctx.fillStyle = `rgba(120,230,185,${0.22 * glow})`;
@@ -2213,6 +2502,17 @@ function drawCreature(ctx, e, px, py, now) {
   const R = def.r * TILE;
   const wob = Math.sin(now * 6 + e.id) * 1.5;
 
+  if (e.hid) { // submerged ambusher: only a slow ripple betrays it
+    const rp = (now * 0.7 + e.id * 0.13) % 1;
+    ctx.strokeStyle = `rgba(150,170,120,${0.28 * (1 - rp)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(px, py, 6 + rp * 14, (6 + rp * 14) * 0.45, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(150,170,120,0.18)';
+    ctx.beginPath(); ctx.ellipse(px, py, 5, 2.2, 0, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 1;
+    return;
+  }
+
   if (e.sp === 'phantasm') { // translucent horror, no shadow
     const wobble = Math.sin(now * 3 + e.id) * 3;
     ctx.globalAlpha = 0.62 + Math.sin(now * 2.2 + e.id) * 0.18;
@@ -2245,8 +2545,9 @@ function drawCreature(ctx, e, px, py, now) {
   }
 
   if (e.sp === 'spinehound') {
+    const prowl = Math.sin(now * 8 + e.id) * 0.09; // low, coiled prowling gait
     ctx.fillStyle = def.color;
-    ctx.beginPath(); ctx.ellipse(px, py, R * 1.25, R * 0.85, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px, py + Math.abs(Math.sin(now * 8 + e.id)) * -2, R * (1.25 + prowl), R * (0.85 - prowl), 0, 0, TAU); ctx.fill();
     ctx.fillStyle = '#7a2c24'; // spines
     for (let i = -2; i <= 2; i++) {
       ctx.beginPath();
@@ -2259,14 +2560,18 @@ function drawCreature(ctx, e, px, py, now) {
     return;
   }
   if (e.sp === 'grazer') {
+    const graze = Math.max(0, Math.sin(now * 1.1 + e.id)) * R * 0.5; // head dips to graze
+    const breathe = Math.sin(now * 2.1 + e.id) * 0.04;
     ctx.fillStyle = def.color;
-    ctx.beginPath(); ctx.ellipse(px, py, R * 1.15, R * 0.85, 0, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc(px + R * 0.9, py - R * 0.5, R * 0.45, 0, TAU); ctx.fill(); // head
+    ctx.beginPath(); ctx.ellipse(px, py, R * 1.15, R * (0.85 + breathe), 0, 0, TAU); ctx.fill();
+    const hy = py - R * 0.5 + graze;
+    ctx.beginPath(); ctx.arc(px + R * 0.9, hy, R * 0.45, 0, TAU); ctx.fill(); // head
     ctx.strokeStyle = '#d8cfe8'; ctx.lineWidth = 2; // antler stalks
-    ctx.beginPath(); ctx.moveTo(px + R * 0.9, py - R * 0.85); ctx.lineTo(px + R * 1.1, py - R * 1.5);
-    ctx.moveTo(px + R * 0.75, py - R * 0.85); ctx.lineTo(px + R * 0.6, py - R * 1.45); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + R * 0.9, hy - R * 0.35); ctx.lineTo(px + R * 1.1, hy - R * 1.0);
+    ctx.moveTo(px + R * 0.75, hy - R * 0.35); ctx.lineTo(px + R * 0.6, hy - R * 0.95); ctx.stroke();
     ctx.lineWidth = 1;
-    eyes(ctx, px + R * 0.9, py - R * 0.5, 3, '#2a2438', 1.4);
+    eyes(ctx, px + R * 0.9, hy, 3, '#2a2438', 1.4);
+    hpBar(ctx, e, def, px, py, R);
     return;
   }
   if (e.sp === 'marsh_lurker') {
@@ -2279,12 +2584,14 @@ function drawCreature(ctx, e, px, py, now) {
     eyes(ctx, px, py - 3, 6, '#e8e15a', 2);
     return;
   }
-  // skitterling
+  // skitterling: quick nervous hops
+  const hop = Math.abs(Math.sin(now * 7 + e.id)) * 3;
+  py -= hop;
   ctx.strokeStyle = '#8a7a3a'; ctx.lineWidth = 1.5; // legs
   for (let i = -1; i <= 1; i++) {
     const lp = Math.sin(now * 12 + i * 2 + e.id) * 3;
-    ctx.beginPath(); ctx.moveTo(px - R, py + i * 3); ctx.lineTo(px - R - 5, py + i * 4 + lp); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(px + R, py + i * 3); ctx.lineTo(px + R + 5, py + i * 4 - lp); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px - R, py + i * 3); ctx.lineTo(px - R - 5, py + i * 4 + lp + hop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + R, py + i * 3); ctx.lineTo(px + R + 5, py + i * 4 - lp + hop); ctx.stroke();
   }
   ctx.lineWidth = 1;
   ctx.fillStyle = def.color;
@@ -2328,31 +2635,51 @@ function drawPlayer(ctx, e, px, py, state, now) {
   }
   shadow(ctx, px, py + 12, 10, 4);
   const a = me ? state.aim : e.a;
-  const bob = Math.sin(now * 9 + e.id) * ((e.x !== e._lx || e.y !== e._ly) ? 1 : 0);
+  // walking bob vs idle breathing
+  const moved = Math.hypot(e.x - (e._lx ?? e.x), e.y - (e._ly ?? e.y)) > 0.004;
+  e._walk = Math.min(1, Math.max(0, (e._walk ?? 0) + (moved ? 0.15 : -0.1)));
+  const bob = Math.sin(now * 10 + e.id) * 2.2 * e._walk;
+  const breathe = Math.sin(now * 2.4 + e.id) * 0.5 * (1 - e._walk);
+  const tilt = Math.sin(now * 10 + e.id) * 0.06 * e._walk; // slight rocking while walking
+  // attack lunge (own player only — we know when we swing)
+  let lunge = 0;
+  if (me && state.attackAnim) {
+    const at = (performance.now() - state.attackAnim) / 180;
+    if (at < 1) lunge = Math.sin(at * Math.PI) * 7;
+  }
 
   // body: field suit
+  ctx.save();
+  ctx.translate(px, py + 3 + bob);
+  ctx.rotate(tilt);
   ctx.fillStyle = e.f ? '#ff6a5a' : me ? '#d8955a' : '#5a8ad8';
-  ctx.beginPath(); ctx.ellipse(px, py + 3 + bob, 8, 10, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, 8, 10 + breathe, 0, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(20,15,10,.5)'; ctx.stroke();
   // backpack
   ctx.fillStyle = '#6a5232';
-  ctx.beginPath(); ctx.ellipse(px - Math.cos(a) * 6, py + 2 - Math.sin(a) * 3 + bob, 4.5, 6, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-Math.cos(a) * 6, -1 - Math.sin(a) * 3, 4.5, 6, 0, 0, TAU); ctx.fill();
+  ctx.restore();
   // head + visor
   ctx.fillStyle = '#e8cfa8';
-  ctx.beginPath(); ctx.arc(px, py - 9 + bob, 7, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(px, py - 9 + bob + breathe, 7, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(20,15,10,.5)'; ctx.stroke();
   ctx.fillStyle = 'rgba(127,212,239,.85)'; // visor toward aim
   ctx.beginPath();
-  ctx.arc(px + Math.cos(a) * 2.5, py - 9.5 + bob + Math.sin(a) * 1.2, 4, a - 1, a + 1);
+  ctx.arc(px + Math.cos(a) * 2.5, py - 9.5 + bob + breathe + Math.sin(a) * 1.2, 4, a - 1, a + 1);
   ctx.fill();
-  // arm + held item
-  const hx = px + Math.cos(a) * 13, hy = py - 1 + Math.sin(a) * 13;
+  // arm + held item (thrusts forward on attack)
+  const reach = 13 + lunge;
+  const hx = px + Math.cos(a) * reach, hy = py - 1 + Math.sin(a) * reach + bob * 0.5;
   ctx.strokeStyle = '#c9a071'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(px + Math.cos(a) * 6, py + Math.sin(a) * 6); ctx.lineTo(hx, hy); ctx.stroke();
   ctx.lineWidth = 1;
   if (e.h) {
     ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(ITEMS[e.h]?.emoji || '', hx + Math.cos(a) * 5, hy + Math.sin(a) * 5 + 5);
+    ctx.save();
+    ctx.translate(hx + Math.cos(a) * 5, hy + Math.sin(a) * 5 + 5);
+    if (lunge) ctx.rotate(a * 0.1 + lunge * 0.05);
+    ctx.fillText(ITEMS[e.h]?.emoji || '', 0, 0);
+    ctx.restore();
   }
   // sleeping
   if (e.sl) {
@@ -2476,8 +2803,21 @@ function refreshOverlays() {
 }
 let lastHp = 100;
 function noteDamage(hp) {
-  if (hp < lastHp - 0.5) state.hurtFlash = 1;
+  if (hp < lastHp - 0.5) { state.hurtFlash = 1; state.shake = Math.min(1.4, (lastHp - hp) / 12); }
   lastHp = hp;
+}
+
+// a whisper drifts across the screen when sanity frays
+function showWhisper(text) {
+  const d = document.createElement('div');
+  d.className = 'whisper';
+  d.textContent = text;
+  d.style.left = (15 + Math.random() * 55) + '%';
+  d.style.top = (20 + Math.random() * 45) + '%';
+  d.style.transform = `rotate(${(Math.random() - 0.5) * 8}deg)`;
+  document.body.appendChild(d);
+  setTimeout(() => d.classList.add('fade'), 60);
+  setTimeout(() => d.remove(), 6200);
 }
 
 // ---------- inventory + equip ----------
@@ -2502,6 +2842,14 @@ function slotEl(s, cls, onLeft, onRight, label) {
   }
   d.onclick = onLeft || null;
   d.oncontextmenu = (e) => { e.preventDefault(); onRight && onRight(); };
+  // touch: long-press to drop
+  let holdT = null;
+  d.addEventListener('touchstart', () => {
+    holdT = setTimeout(() => { holdT = null; onRight && onRight(); }, 550);
+  }, { passive: true });
+  const cancelHold = () => { if (holdT) clearTimeout(holdT); };
+  d.addEventListener('touchend', cancelHold, { passive: true });
+  d.addEventListener('touchmove', cancelHold, { passive: true });
   return d;
 }
 function refreshInv() {
@@ -2725,7 +3073,7 @@ function showWin() {
 
 const ui = { onJoined, refreshHUD, togglePanel, closeAll, refreshPanels, showCrate,
     hideCrate, showCampfire, refreshHint, log, chatFocused, toggleChat, showWin,
-    noteDamage, openCat };
+    noteDamage, openCat, showWhisper };
 </script>
 </body>
 </html>

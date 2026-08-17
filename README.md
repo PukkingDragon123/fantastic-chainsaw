@@ -72,6 +72,15 @@ node scripts/build-static.js
   the wormhole, then activate it to open the way home.
 - **Co-op** — authoritative WebSocket server, shared team research/catalogue, chat, loot-drop-on-death,
   persistent characters.
+- **Horror atmosphere** — close claustrophobic camera (mouse-wheel zoom), murky palette, drifting
+  ground fog, film grain, camera shake on damage, and a swaying viewpoint as sanity fails, with
+  whispered text only the nearly-mad can see. **Whisper monoliths** dot the map — big research
+  rewards, but standing near one erodes your mind.
+- **Creature behaviors** — marsh lurkers ambush from beneath the surface (watch for ripples),
+  crystal wisps blink away when hunted, spinehounds prowl in circling arcs before they commit,
+  duskgrazers roam in herds.
+- **Mobile / touch controls** — virtual joystick, attack (auto-aim), interact, scan, drink, and
+  sprint-toggle buttons; tap to use items, long-press to drop; compact HUD on small screens.
 
 ## Architecture
 

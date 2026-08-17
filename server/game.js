@@ -11,6 +11,18 @@ import { generateWorld, mulberry32 } from './worldgen.js';
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const dist2 = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2;
 
+// heard only by the nearly-mad
+const WHISPERS = [
+  'The trees are counting you.',
+  'Something keeps repeating your name, slightly wrong.',
+  'Do not look at the seams of the sky.',
+  'The ground breathes slower when you stand still.',
+  'It has learned your footsteps.',
+  'The light here is thinner than it should be.',
+  'You buried something. You don’t remember what.',
+  'The wormhole dreams, and you are in the dream.',
+];
+
 export class Game {
   constructor(save) {
     this.seed = save?.seed ?? (Math.random() * 2 ** 31) | 0;
@@ -263,7 +275,19 @@ export class Game {
       state: 'idle', tx: x, ty: y, think: this.rng() * 2, atkCool: 0, target: 0,
       home: { x, y },
     };
+    if (def.ambush) c.hidden = true;     // lurkers wait submerged
+    if (def.blink) c.blinkT = 0;
     this.creatures.set(c.i, c);
+    // herd animals arrive as a small group
+    if (def.herd && !this._herding) {
+      this._herding = true;
+      const extra = 1 + Math.floor(this.rng() * 2);
+      for (let k = 0; k < extra; k++) {
+        const hx = x + (this.rng() - 0.5) * 4, hy = y + (this.rng() - 0.5) * 4;
+        if (this.walkable(hx, hy)) this.spawnCreature(sp, hx, hy);
+      }
+      this._herding = false;
+    }
     return c;
   }
   killCreature(c, killer) {
@@ -309,13 +333,44 @@ export class Game {
         if (d < bd) { bd = d; best = p; }
       }
       const d = Math.sqrt(bd);
+
+      // ambush predators lie hidden until prey wanders close
+      if (c.hidden) {
+        if (best && d < 2.6) {
+          c.hidden = false; c.state = 'chase'; c.target = best.id; c.burst = true;
+          this.msg(best, 'The marsh erupts — something was waiting for you!');
+        }
+        return; // stay perfectly still
+      }
+
       if (c.state === 'flee') {
         if (d > 12 || !best) c.state = 'idle';
-        else { c.tx = c.x + (c.x - best.x) / d * 6; c.ty = c.y + (c.y - best.y) / d * 6; }
+        else {
+          c.tx = c.x + (c.x - best.x) / d * 6; c.ty = c.y + (c.y - best.y) / d * 6;
+          if (def.blink) { // wisps flicker out of reach
+            c.blinkT -= 0.45 + this.rng() * 0.4;
+            if (c.blinkT <= 0) {
+              c.blinkT = 2;
+              const bx = c.x + (c.x - best.x) / d * 4.5 + (this.rng() - 0.5) * 2;
+              const by = c.y + (c.y - best.y) / d * 4.5 + (this.rng() - 0.5) * 2;
+              if (this.walkable(bx, by)) { c.x = bx; c.y = by; }
+            }
+          }
+        }
       } else if (c.state === 'chase') {
         if (!best || d > 14) { c.state = 'idle'; }
-        else { c.tx = best.x; c.ty = best.y; c.target = best.id; }
+        else {
+          c.target = best.id;
+          // hounds prowl in arcs around prey before committing
+          if (def.circle && d > 1.4 && d < 4.5 && this.rng() < 0.45) {
+            const px = (best.y - c.y) / d, py = -(best.x - c.x) / d; // perpendicular
+            const side = (c.i % 2 === 0 ? 1 : -1);
+            c.tx = best.x + px * 2.5 * side; c.ty = best.y + py * 2.5 * side;
+          } else { c.tx = best.x; c.ty = best.y; }
+        }
       } else {
+        // a calmed ambusher slides back under the surface
+        if (def.ambush && this.tileAt(c.x, c.y) === T.MARSH && (!best || d > 8)) { c.hidden = true; return; }
         if (best && def.aggro && d < def.aggro) { c.state = 'chase'; }
         else if (this.rng() < 0.3) { // wander near home
           c.tx = c.home.x + (this.rng() - 0.5) * 8;
@@ -323,6 +378,7 @@ export class Game {
         }
       }
     }
+    if (c.hidden) return; // submerged: no movement, no attacks
 
     // movement toward (tx,ty) — phantasms drift through everything
     const dx = c.tx - c.x, dy = c.ty - c.y;
@@ -343,7 +399,9 @@ export class Game {
       const p = this.players.get(c.target);
       if (p && !p.dead && dist2(p.x, p.y, c.x, c.y) < 1.1) {
         c.atkCool = 1.2;
-        this.hurtPlayer(p, def.dmg, def.name);
+        const dmg = c.burst ? Math.round(def.dmg * 1.5) : def.dmg; // ambush strike hits harder
+        c.burst = false;
+        this.hurtPlayer(p, dmg, def.name);
         if (this.rng() < 0.3 && !p.fx.bleed) { p.fx.bleed = true; p.fx.bleedT = 0; this.msg(p, 'You are bleeding! Use a bandage.'); }
       }
     }
@@ -357,6 +415,7 @@ export class Game {
   }
   hurtCreature(c, dmg, attacker) {
     c.hp -= dmg;
+    c.hidden = false; // no hiding once struck
     if (c.hp <= 0) { this.killCreature(c, attacker); return; }
     const def = CREATURES[c.sp];
     if (def.flee) c.state = 'flee';
@@ -500,7 +559,23 @@ export class Game {
       const def = CREATURES[c.sp];
       if ((def.aggro || def.shadow) && dist2(c.x, c.y, p.x, p.y) < 36) { dsan -= def.shadow ? 0.14 : 0.07; break; }
     }
+    // whisper monoliths gnaw at the mind of anyone standing close
+    for (const o of this.objects.values())
+      if (RESOURCES[o.ty]?.aura && dist2(o.x + 0.5, o.y + 0.5, p.x, p.y) < 16) {
+        dsan -= 0.12;
+        if (!p.nearMono) { p.nearMono = true; this.msg(p, 'The monolith is murmuring. Not in any language. Not to you. Probably.'); }
+        break;
+      }
+    if (dsan >= 0) p.nearMono = false;
     p.sanity = clamp(p.sanity + dsan * dt * 2.2, 0, 100);
+
+    // the whispers come when the mind frays
+    p.whisperT = (p.whisperT || 0) - dt;
+    if (p.sanity < 25 && p.whisperT <= 0) {
+      p.whisperT = 18 + this.rng() * 14;
+      const w = WHISPERS[Math.floor(this.rng() * WHISPERS.length)];
+      p.mail.push({ t: 'whisper', m: w });
+    }
 
     // --- food spoilage in your pack ---
     this.decayInv(p.inv, dt, this.ambientAt(p.x, p.y) < 5 ? 0.5 : 1);
@@ -706,6 +781,7 @@ export class Game {
 
   doGather(p, o) {
     const def = RESOURCES[o.ty];
+    if (def.aura) return this.msg(p, 'The monolith does not move. Something behind your eyes does. Scan it — from a distance.');
     if (o.ready === false) return this.msg(p, `${def.name} is depleted.`);
     if (p.stam < 4) return this.msg(p, 'Too exhausted.');
     const tool = this.handTool(p);
@@ -978,8 +1054,11 @@ export class Game {
         sl: q.sleeping ? 1 : 0,
       });
     for (const c of this.creatures.values())
-      if (dist2(c.x, c.y, p.x, p.y) < 28 * 28)
-        ents.push({ k: 'c', id: c.i, sp: c.sp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), hp: Math.round(c.hp) });
+      if (dist2(c.x, c.y, p.x, p.y) < 28 * 28) {
+        const e = { k: 'c', id: c.i, sp: c.sp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), hp: Math.round(c.hp) };
+        if (c.hidden) e.hid = 1;
+        ents.push(e);
+      }
     const you = {
       x: p.x, y: p.y, hp: p.hp, hunger: p.hunger, thirst: p.thirst, stam: p.stam,
       temp: p.temp, sanity: p.sanity, fx: p.fx, inv: p.inv, handSlot: p.handSlot, bodySlot: p.bodySlot,

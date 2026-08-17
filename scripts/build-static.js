@@ -88,7 +88,7 @@ const js = [
   // main.js imports ui as a namespace; rebuild that object from the inlined functions
   `const ui = { onJoined, refreshHUD, togglePanel, closeAll, refreshPanels, showCrate,
     hideCrate, showCampfire, refreshHint, log, chatFocused, toggleChat, showWin,
-    noteDamage, openCat };`,
+    noteDamage, openCat, showWhisper };`,
 ].join('\n');
 
 let html = read('client/index.html')

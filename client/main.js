@@ -15,6 +15,10 @@ export const state = {
   crate: null,             // {i, inv} when a crate is open
   joined: false, dead: false, respawnIn: 0,
   hurtFlash: 0,
+  zoom: 1.7,               // close, claustrophobic camera (mouse wheel adjusts)
+  shake: 0,                // camera shake on damage
+  touch: null,             // {mx,my} from the virtual joystick
+  sprintLock: false,       // mobile sprint toggle
 };
 
 const canvas = document.getElementById('game');
@@ -71,6 +75,7 @@ function handleEvent(ev) {
     case 'obj*': { const o = state.objects.get(ev.i); if (o) Object.assign(o, ev.p); break; }
     case 'team': state.team = ev.team; ui.refreshPanels(); break;
     case 'msg': ui.log('sys', ev.m); break;
+    case 'whisper': ui.showWhisper(ev.m); break;
     case 'chat': ui.log('chat', `${ev.from}: ${ev.m}`); break;
     case 'crate': state.crate = { i: ev.i, inv: ev.inv }; ui.showCrate(); break;
     case 'win': ui.showWin(); break;
@@ -134,13 +139,31 @@ canvas.addEventListener('mousedown', (e) => {
 addEventListener('contextmenu', e => e.preventDefault());
 
 export function mouseTile() {
+  const z = TILE * state.zoom;
   return [
-    Math.floor((state.mouse.x - canvas.width / 2) / TILE + myPos.x),
-    Math.floor((state.mouse.y - canvas.height / 2) / TILE + myPos.y),
+    Math.floor((state.mouse.x - canvas.width / 2) / z + myPos.x),
+    Math.floor((state.mouse.y - canvas.height / 2) / z + myPos.y),
   ];
 }
 
-function doAttack() { act('attack', { aim: state.aim }); }
+addEventListener('wheel', (e) => {
+  if (!state.joined) return;
+  state.zoom = Math.max(1.2, Math.min(2.4, state.zoom - Math.sign(e.deltaY) * 0.15));
+}, { passive: true });
+
+// aim at the nearest creature when attacking without a pointer (mobile)
+function autoAim() {
+  let best = null, bd = 4 * 4;
+  if (state.snapB) for (const e of state.snapB) {
+    if (e.k !== 'c') continue;
+    const d = (e.x - myPos.x) ** 2 + (e.y - myPos.y) ** 2;
+    if (d < bd) { bd = d; best = e; }
+  }
+  if (best) state.aim = Math.atan2(best.y - myPos.y, best.x - myPos.x);
+  return state.aim;
+}
+
+function doAttack() { state.attackAnim = performance.now(); act('attack', { aim: state.aim }); }
 
 // nearest interactable object within reach — the client proposes, the server validates
 export function nearestInteractable() {
@@ -163,10 +186,72 @@ function doInteract() {
 // ---------- loops ----------
 setInterval(() => { // input stream to server
   if (!state.joined) return;
-  const mx = (state.keys.has('right') ? 1 : 0) - (state.keys.has('left') ? 1 : 0);
-  const my = (state.keys.has('down') ? 1 : 0) - (state.keys.has('up') ? 1 : 0);
-  send({ t: 'i', mx, my, sprint: state.keys.has('sprint'), aim: state.aim });
+  let mx = (state.keys.has('right') ? 1 : 0) - (state.keys.has('left') ? 1 : 0);
+  let my = (state.keys.has('down') ? 1 : 0) - (state.keys.has('up') ? 1 : 0);
+  if (state.touch) { mx = state.touch.mx; my = state.touch.my; }
+  if (state.touch && (mx || my)) state.aim = Math.atan2(my, mx); // face where you walk
+  send({ t: 'i', mx, my, sprint: state.keys.has('sprint') || state.sprintLock, aim: state.aim });
 }, 50);
+
+// ---------- touch controls ----------
+if ('ontouchstart' in window) initTouch();
+function initTouch() {
+  document.body.classList.add('mobile');
+  const joy = document.createElement('div'); joy.id = 'joy';
+  joy.innerHTML = '<div id="joybase"><div id="joystick"></div></div>';
+  document.body.appendChild(joy);
+  const btns = document.createElement('div'); btns.id = 'mbtns';
+  const B = (label, title, fn, hold) => {
+    const b = document.createElement('button');
+    b.className = 'mbtn'; b.textContent = label; b.title = title;
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); fn(b); }, { passive: false });
+    btns.appendChild(b);
+    return b;
+  };
+  B('⚔️', 'attack', () => { autoAim(); doAttack(); });
+  B('✋', 'interact', () => doInteract());
+  B('📡', 'scan', () => act('scan'));
+  B('💧', 'drink', () => act('drink'));
+  B('🏃', 'sprint', (b) => { state.sprintLock = !state.sprintLock; b.classList.toggle('on', state.sprintLock); });
+  document.body.appendChild(btns);
+
+  const base = joy.querySelector('#joybase'), stick = joy.querySelector('#joystick');
+  let origin = null, touchId = null;
+  addEventListener('touchstart', (e) => {
+    if (!state.joined) return;
+    for (const t of e.changedTouches) {
+      if (t.clientX < innerWidth * 0.45 && t.clientY > innerHeight * 0.3 && touchId === null) {
+        touchId = t.identifier;
+        origin = { x: t.clientX, y: t.clientY };
+        joy.style.display = 'block';
+        base.style.left = (t.clientX - 60) + 'px'; base.style.top = (t.clientY - 60) + 'px';
+      }
+    }
+  }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    if (touchId === null) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier !== touchId) continue;
+      const dx = t.clientX - origin.x, dy = t.clientY - origin.y;
+      const d = Math.hypot(dx, dy), max = 52;
+      const f = d > 10 ? Math.min(1, d / max) : 0; // deadzone
+      state.touch = d > 10 ? { mx: dx / d * f, my: dy / d * f } : { mx: 0, my: 0 };
+      const cd = Math.min(d, max);
+      stick.style.transform = `translate(${d ? dx / d * cd : 0}px, ${d ? dy / d * cd : 0}px)`;
+    }
+  }, { passive: true });
+  const endTouch = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === touchId) {
+        touchId = null; state.touch = { mx: 0, my: 0 };
+        stick.style.transform = 'translate(0,0)';
+        joy.style.display = 'none';
+      }
+    }
+  };
+  addEventListener('touchend', endTouch, { passive: true });
+  addEventListener('touchcancel', endTouch, { passive: true });
+}
 
 function frame() {
   requestAnimationFrame(frame);

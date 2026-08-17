@@ -27,15 +27,15 @@ export const T = {
   SPORE: 5, MARSH: 6, ROCK: 7, CRYSTAL: 8,
 };
 export const TILE_INFO = {
-  [T.DEEP]:    { name: 'Deep water',      color: '#123a5c', walk: false, water: true },
-  [T.WATER]:   { name: 'Shallow water',   color: '#1d6d9e', walk: false, water: true },
-  [T.SAND]:    { name: 'Ashen shore',     color: '#cbb375', walk: true },
-  [T.GRASS]:   { name: 'Pale sward',      color: '#7ba05b', walk: true },
-  [T.MEADOW]:  { name: 'Violet meadow',   color: '#8d80b8', walk: true },
-  [T.SPORE]:   { name: 'Spore forest',    color: '#47654e', walk: true, tempMod: 1, sporeRisk: true },
-  [T.MARSH]:   { name: 'Breathing marsh', color: '#566b42', walk: true, tempMod: 2, slow: 0.6, sporeRisk: true },
-  [T.ROCK]:    { name: 'Grey barrens',    color: '#7d7d84', walk: true, tempMod: -2 },
-  [T.CRYSTAL]: { name: 'Crystal flats',   color: '#6c93ad', walk: true, tempMod: -4 },
+  [T.DEEP]:    { name: 'Deep water',      color: '#0a1d30', walk: false, water: true },
+  [T.WATER]:   { name: 'Shallow water',   color: '#143c54', walk: false, water: true },
+  [T.SAND]:    { name: 'Ashen shore',     color: '#7d6c48', walk: true },
+  [T.GRASS]:   { name: 'Pale sward',      color: '#4c6338', walk: true },
+  [T.MEADOW]:  { name: 'Violet meadow',   color: '#575073', walk: true },
+  [T.SPORE]:   { name: 'Spore forest',    color: '#2b3d31', walk: true, tempMod: 1, sporeRisk: true },
+  [T.MARSH]:   { name: 'Breathing marsh', color: '#37422b', walk: true, tempMod: 2, slow: 0.6, sporeRisk: true },
+  [T.ROCK]:    { name: 'Grey barrens',    color: '#4b4b52', walk: true, tempMod: -2 },
+  [T.CRYSTAL]: { name: 'Crystal flats',   color: '#3e5a70', walk: true, tempMod: -4 },
 };
 
 // ---- items ----
@@ -120,16 +120,16 @@ export const CREATURES = {
   skitterling: { name: 'Skitterling',   emoji: '🦗', hp: 20, speed: 3.2, dmg: 0,  aggro: 0, flee: true,
     drops: [{ item: 'raw_meat', n: 1, p: 1 }, { item: 'hide', n: 1, p: 0.5 }],
     tiles: [T.GRASS, T.MEADOW], rp: 15, color: '#c9b458', r: 0.35 },
-  grazer:      { name: 'Duskgrazer',    emoji: '🦌', hp: 60, speed: 2.4, dmg: 8,  aggro: 0, retaliate: true,
+  grazer:      { name: 'Duskgrazer',    emoji: '🦌', hp: 60, speed: 2.4, dmg: 8,  aggro: 0, retaliate: true, herd: true,
     drops: [{ item: 'raw_meat', n: 2, p: 1 }, { item: 'hide', n: 2, p: 0.8 }],
     tiles: [T.MEADOW, T.GRASS], rp: 15, color: '#a284c9', r: 0.55 },
-  spinehound:  { name: 'Spinehound',    emoji: '🐺', hp: 45, speed: 4.2, dmg: 12, aggro: 8, night: true,
+  spinehound:  { name: 'Spinehound',    emoji: '🐺', hp: 45, speed: 4.2, dmg: 12, aggro: 8, night: true, circle: true,
     drops: [{ item: 'raw_meat', n: 1, p: 1 }, { item: 'hide', n: 1, p: 0.6 }],
     tiles: [T.GRASS, T.MEADOW, T.SPORE, T.ROCK], rp: 20, color: '#b0453a', r: 0.45 },
-  marsh_lurker:{ name: 'Marsh lurker',  emoji: '🐊', hp: 70, speed: 3.0, dmg: 15, aggro: 5,
+  marsh_lurker:{ name: 'Marsh lurker',  emoji: '🐊', hp: 70, speed: 3.4, dmg: 15, aggro: 5, ambush: true,
     drops: [{ item: 'raw_meat', n: 2, p: 1 }, { item: 'glow_spores', n: 2, p: 1 }],
     tiles: [T.MARSH], rp: 20, color: '#5a8a5e', r: 0.55 },
-  crystal_wisp:{ name: 'Crystal wisp',  emoji: '✨', hp: 30, speed: 4.6, dmg: 0,  aggro: 0, flee: true,
+  crystal_wisp:{ name: 'Crystal wisp',  emoji: '✨', hp: 30, speed: 4.6, dmg: 0,  aggro: 0, flee: true, blink: true,
     drops: [{ item: 'crystal', n: 2, p: 1 }],
     tiles: [T.CRYSTAL, T.ROCK], rp: 20, color: '#9fe3f2', r: 0.35 },
   phantasm:    { name: 'Phantasm',      emoji: '🌑', hp: 40, speed: 4.8, dmg: 10, aggro: 12, shadow: true,
@@ -146,6 +146,8 @@ export const RESOURCES = {
   pulse_bush: { name: 'Pulse-fruit bush',  emoji: '🫐', tool: null,   hits: 1, drop: { pulse_fruit: 2 }, regrow: 240, block: false, rp: 8, color: '#c9639c', seasonal: true },
   glowshroom: { name: 'Glowshroom ring',   emoji: '🍄', tool: null,   hits: 1, drop: { glow_spores: 2 }, regrow: 260, block: false, rp: 8, color: '#84e8c0', seasonal: true },
   debris:     { name: 'Wormhole debris',   emoji: '🛸', tool: 'pick', hits: 3, drop: { alloy: 1 }, regrow: 0, block: true, rp: 10, color: '#d29a45' },
+  monolith:   { name: 'Whisper monolith',  emoji: '🗿', tool: null,   hits: 0, drop: {}, regrow: 0, block: true, rp: 18, color: '#2e2a3c', aura: true },
+  remains:    { name: 'Chitin remains',    emoji: '🦴', tool: null,   hits: 1, drop: { hide: 2 }, regrow: 900, block: false, rp: 8, color: '#b8ad94' },
 };
 
 // wormhole repair — all three parts must be installed, then activated

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>EXO-TERRA — Research Expedition</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
   :root {
     --panel: rgba(24, 19, 14, .92);
@@ -14,7 +14,9 @@
     --gold: #e8c15a;
     --teal: #7fd4ef;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none;
+    -webkit-user-select: none; touch-action: manipulation; }
+  #game { touch-action: none; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000;
     font: 15px/1.35 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', cursive;
     color: var(--ink); }
@@ -164,6 +166,37 @@
 
   #minimap { position: absolute; right: 12px; bottom: 12px; border: 2px solid var(--edge);
     border-radius: 8px; image-rendering: pixelated; z-index: 5; box-shadow: 0 3px 10px rgba(0,0,0,.5); }
+
+  /* ---------- whispers (low sanity) ---------- */
+  .whisper { position: absolute; z-index: 15; pointer-events: none;
+    color: rgba(190,170,230,.0); font-size: 21px; letter-spacing: 2px;
+    text-shadow: 0 0 14px rgba(140,100,200,.8); transition: color 2.4s, filter 2.4s;
+    filter: blur(3px); }
+  .whisper.fade { color: rgba(190,170,230,.75); filter: blur(0.6px); }
+
+  /* ---------- touch controls ---------- */
+  #joy { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 9; }
+  #joybase { position: absolute; width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(20,16,12,.35); border: 2px solid rgba(160,140,110,.4); }
+  #joystick { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px;
+    border-radius: 50%; background: rgba(200,180,140,.45); border: 2px solid rgba(230,210,170,.6); }
+  #mbtns { position: absolute; right: 8px; bottom: 8px; display: grid;
+    grid-template-columns: repeat(2, 56px); gap: 8px; z-index: 9; }
+  .mbtn { width: 56px; height: 56px; border-radius: 50%; background: var(--panel);
+    border: 2px solid var(--edge); font-size: 23px; box-shadow: 0 3px 8px rgba(0,0,0,.5); }
+  .mbtn.on { border-color: var(--gold); box-shadow: 0 0 12px rgba(232,193,90,.5); }
+
+  /* compact layout on small / touch screens */
+  body.mobile #help { display: none !important; }
+  body.mobile #minimap { width: 88px !important; height: 88px !important; right: 10px; top: 10px; bottom: auto; }
+  body.mobile #topright { right: 108px; transform: scale(.72); transform-origin: top right; }
+  body.mobile #invbar { width: 400px; }
+  body.mobile .slot { width: 36px; height: 36px; font-size: 17px; }
+  body.mobile #bottom { bottom: 6px; }
+  body.mobile #log { width: 230px; font-size: 11px; max-height: 92px; bottom: 8px; }
+  body.mobile #hint { bottom: 96px; font-size: 11px; }
+  body.mobile #craftbar { transform: translateY(-50%) scale(.85); transform-origin: left center; }
+  body.mobile #craftpanel { width: 226px; max-height: 82vh; }
 </style>
 </head>
 <body>

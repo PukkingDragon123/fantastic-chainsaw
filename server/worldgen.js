@@ -32,8 +32,8 @@ function makeNoise(rng, gridStep) {
 
 export function generateWorld(seed) {
   const rng = mulberry32(seed);
-  const elev1 = makeNoise(rng, 24), elev2 = makeNoise(rng, 8);
-  const moist = makeNoise(rng, 18);
+  const elev1 = makeNoise(rng, 24), elev2 = makeNoise(rng, 8), elev3 = makeNoise(rng, 3);
+  const moist = makeNoise(rng, 18), moist2 = makeNoise(rng, 5);
   const strange = makeNoise(rng, 14);
 
   const tiles = new Uint8Array(WORLD_W * WORLD_H);
@@ -44,8 +44,8 @@ export function generateWorld(seed) {
       // island falloff so the map edge is ocean
       const dx = (x - cx) / cx, dy = (y - cy) / cy;
       const edge = Math.max(0, 1 - (dx * dx + dy * dy) * 1.15);
-      const e = (elev1(x, y) * 0.7 + elev2(x, y) * 0.3) * edge;
-      const m = moist(x, y);
+      const e = (elev1(x, y) * 0.62 + elev2(x, y) * 0.28 + elev3(x, y) * 0.10) * edge;
+      const m = moist(x, y) * 0.8 + moist2(x, y) * 0.2;
       const s = strange(x, y);
       let t;
       if (e < 0.16) t = T.DEEP;
@@ -99,6 +99,26 @@ export function generateWorld(seed) {
         acc += p;
         if (roll < acc) { place(ty, x, y); break; }
       }
+    }
+  }
+
+  // Whisper monoliths: ancient standing stones ringed by chitin remains.
+  // Something died at every one of them.
+  let placedMono = 0, monoGuard = 0;
+  while (placedMono < 12 && monoGuard++ < 800) {
+    const x = 8 + Math.floor(rng() * (WORLD_W - 16)), y = 8 + Math.floor(rng() * (WORLD_H - 16));
+    if (Math.abs(x - wx) < 14 && Math.abs(y - wy) < 14) continue; // not near the landing zone
+    const t = tiles[y * WORLD_W + x];
+    if (t === T.DEEP || t === T.WATER || t === T.SAND) continue;
+    place('monolith', x, y);
+    placedMono++;
+    const bones = 2 + Math.floor(rng() * 3);
+    for (let b = 0; b < bones; b++) {
+      const bx = x + Math.floor((rng() - 0.5) * 7), by = y + Math.floor((rng() - 0.5) * 7);
+      if (bx < 1 || by < 1 || bx >= WORLD_W - 1 || by >= WORLD_H - 1) continue;
+      const bt = tiles[by * WORLD_W + bx];
+      if (bt === T.DEEP || bt === T.WATER) continue;
+      place('remains', bx, by);
     }
   }
 

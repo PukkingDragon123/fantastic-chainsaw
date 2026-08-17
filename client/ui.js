@@ -108,8 +108,21 @@ function refreshOverlays() {
 }
 let lastHp = 100;
 export function noteDamage(hp) {
-  if (hp < lastHp - 0.5) state.hurtFlash = 1;
+  if (hp < lastHp - 0.5) { state.hurtFlash = 1; state.shake = Math.min(1.4, (lastHp - hp) / 12); }
   lastHp = hp;
+}
+
+// a whisper drifts across the screen when sanity frays
+export function showWhisper(text) {
+  const d = document.createElement('div');
+  d.className = 'whisper';
+  d.textContent = text;
+  d.style.left = (15 + Math.random() * 55) + '%';
+  d.style.top = (20 + Math.random() * 45) + '%';
+  d.style.transform = `rotate(${(Math.random() - 0.5) * 8}deg)`;
+  document.body.appendChild(d);
+  setTimeout(() => d.classList.add('fade'), 60);
+  setTimeout(() => d.remove(), 6200);
 }
 
 // ---------- inventory + equip ----------
@@ -134,6 +147,14 @@ function slotEl(s, cls, onLeft, onRight, label) {
   }
   d.onclick = onLeft || null;
   d.oncontextmenu = (e) => { e.preventDefault(); onRight && onRight(); };
+  // touch: long-press to drop
+  let holdT = null;
+  d.addEventListener('touchstart', () => {
+    holdT = setTimeout(() => { holdT = null; onRight && onRight(); }, 550);
+  }, { passive: true });
+  const cancelHold = () => { if (holdT) clearTimeout(holdT); };
+  d.addEventListener('touchend', cancelHold, { passive: true });
+  d.addEventListener('touchmove', cancelHold, { passive: true });
   return d;
 }
 function refreshInv() {

@@ -68,19 +68,31 @@ const shadow = (ctx, x, y, rx, ry) => {
 export function render(ctx, canvas, state) {
   const W = canvas.width, H = canvas.height;
   const now = performance.now() / 1000;
-  const camX = myPos.x * TILE - W / 2, camY = myPos.y * TILE - H / 2;
-  const sx = wx => wx * TILE - camX, sy = wy => wy * TILE - camY;
   const phase = phaseOf(state.env.tod);
 
+  // ---- close, unsteady camera: zoom + damage shake + insanity sway ----
+  const Z = state.zoom || 1.7;
+  state.shake = Math.max(0, (state.shake || 0) * 0.88 - 0.004);
+  const sanity = state.you?.sanity ?? 100;
+  const swayA = Math.max(0, 45 - sanity) / 45;
+  const swx = Math.sin(now * 0.9) * 13 * swayA + (Math.random() - 0.5) * 24 * state.shake;
+  const swy = Math.cos(now * 0.63) * 9 * swayA + (Math.random() - 0.5) * 24 * state.shake;
+  const camCx = myPos.x * TILE + swx, camCy = myPos.y * TILE + swy;
+  const ox = W / 2 - camCx * Z, oy = H / 2 - camCy * Z;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#04060a'; ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(Z, 0, 0, Z, ox, oy);
+  const sx = wx => wx * TILE, sy = wy => wy * TILE; // world-pixel coords under the transform
+
   // ---- terrain ----
-  const x0 = Math.max(0, Math.floor(camX / TILE)), y0 = Math.max(0, Math.floor(camY / TILE));
-  const x1 = Math.min(state.w - 1, Math.ceil((camX + W) / TILE)), y1 = Math.min(state.h - 1, Math.ceil((camY + H) / TILE));
-  ctx.fillStyle = '#06090d'; ctx.fillRect(0, 0, W, H);
+  const halfW = W / (2 * Z * TILE) + 1.5, halfH = H / (2 * Z * TILE) + 1.5;
+  const x0 = Math.max(0, Math.floor(myPos.x - halfW)), y0 = Math.max(0, Math.floor(myPos.y - halfH));
+  const x1 = Math.min(state.w - 1, Math.ceil(myPos.x + halfW)), y1 = Math.min(state.h - 1, Math.ceil(myPos.y + halfH));
   for (let y = y0; y <= y1; y++)
     for (let x = x0; x <= x1; x++) {
       const t = state.tiles[y * state.w + x];
       const h = hash(x, y);
-      const px = x * TILE - camX, py = y * TILE - camY;
+      const px = x * TILE, py = y * TILE;
       ctx.fillStyle = tileColor(TILE_INFO[t].color, h * 0.55 + 0.22);
       ctx.fillRect(px, py, TILE + 1, TILE + 1);
       drawDecor(ctx, t, h, px, py, now, state.env.season);
@@ -128,10 +140,12 @@ export function render(ctx, canvas, state) {
   const darkness = nightAlpha(state.env.tod);
   if (darkness > 0.02) {
     if (lightCv.width !== W || lightCv.height !== H) { lightCv.width = W; lightCv.height = H; }
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
     lctx.globalCompositeOperation = 'source-over';
     lctx.clearRect(0, 0, W, H);
-    lctx.fillStyle = `rgba(6,9,22,${darkness})`;
+    lctx.fillStyle = `rgba(4,6,18,${darkness})`;
     lctx.fillRect(0, 0, W, H);
+    lctx.setTransform(Z, 0, 0, Z, ox, oy); // light holes in world space
     lctx.globalCompositeOperation = 'destination-out';
     const flick = 1 + Math.sin(now * 11) * 0.04 + Math.sin(now * 23) * 0.03;
     for (const o of state.objects.values()) {
@@ -139,31 +153,48 @@ export function render(ctx, canvas, state) {
       if (o.ty === 'wormhole') light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 5.5, 0.95);
       if (o.ty === 'crystal_node' && o.ready !== false) light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 1.6, 0.55);
       if (o.ty === 'glowshroom' && o.ready !== false) light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 1.8, 0.6);
+      if (RESOURCES[o.ty]?.aura) light(lctx, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 1.4, 0.35); // monoliths glow faintly wrong
     }
     for (const e of lerpedEnts()) {
-      if (e.k === 'p' && !e.d) light(lctx, sx(e.x), sy(e.y), e.h === 'torch' ? TILE * 5.5 * flick : TILE * 1.8, e.h === 'torch' ? 1 : 0.65);
+      if (e.k === 'p' && !e.d) light(lctx, sx(e.x), sy(e.y), e.h === 'torch' ? TILE * 5.2 * flick : TILE * 1.5, e.h === 'torch' ? 1 : 0.55);
       if (e.k === 'c' && e.sp === 'crystal_wisp') light(lctx, sx(e.x), sy(e.y), TILE * 2.2, 0.75);
     }
     lctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(lightCv, 0, 0);
-    // warm glow over fires
+    // warm glow over fires (under the darkness mask)
     for (const o of state.objects.values())
       if (o.ty === 'campfire' && o.lit) {
         const g = ctx.createRadialGradient(sx(o.x + 0.5), sy(o.y + 0.5), 0, sx(o.x + 0.5), sy(o.y + 0.5), TILE * 4);
-        g.addColorStop(0, `rgba(255,150,50,${0.15 * darkness})`); g.addColorStop(1, 'rgba(255,150,50,0)');
+        g.addColorStop(0, `rgba(255,150,50,${0.16 * darkness})`); g.addColorStop(1, 'rgba(255,150,50,0)');
         ctx.fillStyle = g;
         ctx.fillRect(sx(o.x + 0.5) - TILE * 4, sy(o.y + 0.5) - TILE * 4, TILE * 8, TILE * 8);
       }
-  }
-  // dusk / dawn warm grading
-  if (phase === 'dusk') {
-    ctx.fillStyle = 'rgba(230,120,40,0.10)'; ctx.fillRect(0, 0, W, H);
-  } else if (state.env.tod > 0.20 && state.env.tod < 0.27) {
-    ctx.fillStyle = 'rgba(255,180,110,0.08)'; ctx.fillRect(0, 0, W, H);
-  }
-  // season tint
-  const tint = ['rgba(140,220,140,0.03)', 'rgba(255,210,120,0.05)', 'rgba(210,130,60,0.07)', 'rgba(190,215,255,0.14)'][state.env.season];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(lightCv, 0, 0);
+  } else ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // ---- screen-space grading: overcast gloom, dusk, season, fog, grain ----
+  ctx.fillStyle = 'rgba(8,12,16,0.10)'; ctx.fillRect(0, 0, W, H); // permanent overcast
+  if (phase === 'dusk') { ctx.fillStyle = 'rgba(200,90,30,0.12)'; ctx.fillRect(0, 0, W, H); }
+  else if (state.env.tod > 0.20 && state.env.tod < 0.27) { ctx.fillStyle = 'rgba(255,170,100,0.07)'; ctx.fillRect(0, 0, W, H); }
+  const tint = ['rgba(110,180,110,0.03)', 'rgba(230,190,110,0.04)', 'rgba(190,110,50,0.07)', 'rgba(170,195,235,0.13)'][state.env.season];
   ctx.fillStyle = tint; ctx.fillRect(0, 0, W, H);
+
+  // drifting ground-fog banks
+  const fogA = 0.10 + darkness * 0.16 + swayA * 0.06;
+  for (let i = 0; i < 3; i++) {
+    const fx = ((now * (7 + i * 4) + i * 700) % (W + 700)) - 350;
+    const fy = H * (0.2 + i * 0.3) + Math.sin(now * 0.24 + i * 2) * 60;
+    const fr = 250 + i * 110;
+    const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, fr);
+    g.addColorStop(0, `rgba(10,14,20,${fogA})`); g.addColorStop(1, 'rgba(10,14,20,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(fx - fr, fy - fr, fr * 2, fr * 2);
+  }
+  // film grain
+  ctx.fillStyle = 'rgba(255,255,255,0.028)';
+  for (let i = 0; i < 70; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let i = 0; i < 50; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 2, 1);
 
   // ---- minimap ----
   if (miniDone) {
@@ -224,11 +255,25 @@ function drawDecor(ctx, t, h, px, py, now, season) {
     ctx.fillStyle = 'rgba(120,100,60,.5)';
     ctx.fillRect(px + (h * 87) % TILE, py + (h * 43) % TILE, 2, 2);
   }
+  // sparse extra detail: pale flowers in meadows, pebbles on sward
+  if (t === T.MEADOW && h > 0.30 && h < 0.345) {
+    const fx = px + (h * 233) % TILE, fy = py + (h * 149) % TILE;
+    ctx.fillStyle = 'rgba(200,180,230,.55)';
+    for (let k = 0; k < 4; k++) {
+      const fa = k * TAU / 4 + h * 9;
+      ctx.beginPath(); ctx.arc(fx + Math.cos(fa) * 2.2, fy + Math.sin(fa) * 2.2, 1.3, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(240,220,150,.7)';
+    ctx.beginPath(); ctx.arc(fx, fy, 1.2, 0, TAU); ctx.fill();
+  } else if (t === T.GRASS && h > 0.30 && h < 0.33) {
+    ctx.fillStyle = 'rgba(70,80,60,.6)';
+    ctx.beginPath(); ctx.ellipse(px + (h * 177) % TILE, py + (h * 119) % TILE, 2.6, 1.7, 0, 0, TAU); ctx.fill();
+  }
 }
 
 function nightAlpha(tod) {
   const d = Math.cos(tod * TAU) * 0.5 + 0.5; // 1 at midnight, 0 at noon
-  return Math.max(0, d - 0.22) * 1.06;
+  return Math.max(0, d - 0.18) * 1.13; // nights are properly black now
 }
 
 function light(ctx, x, y, r, strength) {
@@ -306,6 +351,31 @@ function drawObject(ctx, o, px, py, state, now) {
           ctx.beginPath(); ctx.arc(px + dx, py + dy, 2.6, 0, TAU); ctx.fill();
         }
       }
+    } else if (o.ty === 'monolith') {
+      shadow(ctx, px, py + 12, 13, 5);
+      ctx.fillStyle = '#242031';
+      ctx.beginPath();
+      ctx.moveTo(px - 8, py + 12); ctx.lineTo(px - 6, py - 22); ctx.lineTo(px - 1, py - 27);
+      ctx.lineTo(px + 6, py - 20); ctx.lineTo(px + 8, py + 12);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#151221'; ctx.stroke();
+      const gl = 0.35 + Math.sin(now * 0.9 + h * 7) * 0.25; // rune-scratches that shouldn't glow
+      ctx.strokeStyle = `rgba(150,120,220,${gl})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(px - 3, py - 18); ctx.lineTo(px + 2, py - 14); ctx.lineTo(px - 2, py - 9);
+      ctx.moveTo(px + 3, py - 4); ctx.lineTo(px - 3, py + 1); ctx.lineTo(px + 2, py + 6);
+      ctx.stroke(); ctx.lineWidth = 1;
+    } else if (o.ty === 'remains') {
+      ctx.strokeStyle = '#b8ad94'; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.arc(px - 3, py, 7, Math.PI * 1.15, Math.PI * 1.95); ctx.stroke(); // rib arcs
+      ctx.beginPath(); ctx.arc(px + 2, py + 1, 6, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - 8, py + 5); ctx.lineTo(px + 9, py + 3); ctx.stroke(); // spine
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#b8ad94';
+      ctx.beginPath(); ctx.arc(px + 11, py + 2, 3.2, 0, TAU); ctx.fill(); // skull-ish knob
+      ctx.fillStyle = '#3a3428';
+      ctx.beginPath(); ctx.arc(px + 10.5, py + 1.5, 1, 0, TAU); ctx.fill();
     } else if (o.ty === 'glowshroom') {
       const glow = 0.55 + Math.sin(now * 1.7 + h * 14) * 0.25;
       ctx.fillStyle = `rgba(120,230,185,${0.22 * glow})`;
@@ -456,6 +526,17 @@ function drawCreature(ctx, e, px, py, now) {
   const R = def.r * TILE;
   const wob = Math.sin(now * 6 + e.id) * 1.5;
 
+  if (e.hid) { // submerged ambusher: only a slow ripple betrays it
+    const rp = (now * 0.7 + e.id * 0.13) % 1;
+    ctx.strokeStyle = `rgba(150,170,120,${0.28 * (1 - rp)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(px, py, 6 + rp * 14, (6 + rp * 14) * 0.45, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(150,170,120,0.18)';
+    ctx.beginPath(); ctx.ellipse(px, py, 5, 2.2, 0, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 1;
+    return;
+  }
+
   if (e.sp === 'phantasm') { // translucent horror, no shadow
     const wobble = Math.sin(now * 3 + e.id) * 3;
     ctx.globalAlpha = 0.62 + Math.sin(now * 2.2 + e.id) * 0.18;
@@ -488,8 +569,9 @@ function drawCreature(ctx, e, px, py, now) {
   }
 
   if (e.sp === 'spinehound') {
+    const prowl = Math.sin(now * 8 + e.id) * 0.09; // low, coiled prowling gait
     ctx.fillStyle = def.color;
-    ctx.beginPath(); ctx.ellipse(px, py, R * 1.25, R * 0.85, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(px, py + Math.abs(Math.sin(now * 8 + e.id)) * -2, R * (1.25 + prowl), R * (0.85 - prowl), 0, 0, TAU); ctx.fill();
     ctx.fillStyle = '#7a2c24'; // spines
     for (let i = -2; i <= 2; i++) {
       ctx.beginPath();
@@ -502,14 +584,18 @@ function drawCreature(ctx, e, px, py, now) {
     return;
   }
   if (e.sp === 'grazer') {
+    const graze = Math.max(0, Math.sin(now * 1.1 + e.id)) * R * 0.5; // head dips to graze
+    const breathe = Math.sin(now * 2.1 + e.id) * 0.04;
     ctx.fillStyle = def.color;
-    ctx.beginPath(); ctx.ellipse(px, py, R * 1.15, R * 0.85, 0, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc(px + R * 0.9, py - R * 0.5, R * 0.45, 0, TAU); ctx.fill(); // head
+    ctx.beginPath(); ctx.ellipse(px, py, R * 1.15, R * (0.85 + breathe), 0, 0, TAU); ctx.fill();
+    const hy = py - R * 0.5 + graze;
+    ctx.beginPath(); ctx.arc(px + R * 0.9, hy, R * 0.45, 0, TAU); ctx.fill(); // head
     ctx.strokeStyle = '#d8cfe8'; ctx.lineWidth = 2; // antler stalks
-    ctx.beginPath(); ctx.moveTo(px + R * 0.9, py - R * 0.85); ctx.lineTo(px + R * 1.1, py - R * 1.5);
-    ctx.moveTo(px + R * 0.75, py - R * 0.85); ctx.lineTo(px + R * 0.6, py - R * 1.45); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + R * 0.9, hy - R * 0.35); ctx.lineTo(px + R * 1.1, hy - R * 1.0);
+    ctx.moveTo(px + R * 0.75, hy - R * 0.35); ctx.lineTo(px + R * 0.6, hy - R * 0.95); ctx.stroke();
     ctx.lineWidth = 1;
-    eyes(ctx, px + R * 0.9, py - R * 0.5, 3, '#2a2438', 1.4);
+    eyes(ctx, px + R * 0.9, hy, 3, '#2a2438', 1.4);
+    hpBar(ctx, e, def, px, py, R);
     return;
   }
   if (e.sp === 'marsh_lurker') {
@@ -522,12 +608,14 @@ function drawCreature(ctx, e, px, py, now) {
     eyes(ctx, px, py - 3, 6, '#e8e15a', 2);
     return;
   }
-  // skitterling
+  // skitterling: quick nervous hops
+  const hop = Math.abs(Math.sin(now * 7 + e.id)) * 3;
+  py -= hop;
   ctx.strokeStyle = '#8a7a3a'; ctx.lineWidth = 1.5; // legs
   for (let i = -1; i <= 1; i++) {
     const lp = Math.sin(now * 12 + i * 2 + e.id) * 3;
-    ctx.beginPath(); ctx.moveTo(px - R, py + i * 3); ctx.lineTo(px - R - 5, py + i * 4 + lp); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(px + R, py + i * 3); ctx.lineTo(px + R + 5, py + i * 4 - lp); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px - R, py + i * 3); ctx.lineTo(px - R - 5, py + i * 4 + lp + hop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + R, py + i * 3); ctx.lineTo(px + R + 5, py + i * 4 - lp + hop); ctx.stroke();
   }
   ctx.lineWidth = 1;
   ctx.fillStyle = def.color;
@@ -571,31 +659,51 @@ function drawPlayer(ctx, e, px, py, state, now) {
   }
   shadow(ctx, px, py + 12, 10, 4);
   const a = me ? state.aim : e.a;
-  const bob = Math.sin(now * 9 + e.id) * ((e.x !== e._lx || e.y !== e._ly) ? 1 : 0);
+  // walking bob vs idle breathing
+  const moved = Math.hypot(e.x - (e._lx ?? e.x), e.y - (e._ly ?? e.y)) > 0.004;
+  e._walk = Math.min(1, Math.max(0, (e._walk ?? 0) + (moved ? 0.15 : -0.1)));
+  const bob = Math.sin(now * 10 + e.id) * 2.2 * e._walk;
+  const breathe = Math.sin(now * 2.4 + e.id) * 0.5 * (1 - e._walk);
+  const tilt = Math.sin(now * 10 + e.id) * 0.06 * e._walk; // slight rocking while walking
+  // attack lunge (own player only — we know when we swing)
+  let lunge = 0;
+  if (me && state.attackAnim) {
+    const at = (performance.now() - state.attackAnim) / 180;
+    if (at < 1) lunge = Math.sin(at * Math.PI) * 7;
+  }
 
   // body: field suit
+  ctx.save();
+  ctx.translate(px, py + 3 + bob);
+  ctx.rotate(tilt);
   ctx.fillStyle = e.f ? '#ff6a5a' : me ? '#d8955a' : '#5a8ad8';
-  ctx.beginPath(); ctx.ellipse(px, py + 3 + bob, 8, 10, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, 8, 10 + breathe, 0, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(20,15,10,.5)'; ctx.stroke();
   // backpack
   ctx.fillStyle = '#6a5232';
-  ctx.beginPath(); ctx.ellipse(px - Math.cos(a) * 6, py + 2 - Math.sin(a) * 3 + bob, 4.5, 6, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-Math.cos(a) * 6, -1 - Math.sin(a) * 3, 4.5, 6, 0, 0, TAU); ctx.fill();
+  ctx.restore();
   // head + visor
   ctx.fillStyle = '#e8cfa8';
-  ctx.beginPath(); ctx.arc(px, py - 9 + bob, 7, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(px, py - 9 + bob + breathe, 7, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(20,15,10,.5)'; ctx.stroke();
   ctx.fillStyle = 'rgba(127,212,239,.85)'; // visor toward aim
   ctx.beginPath();
-  ctx.arc(px + Math.cos(a) * 2.5, py - 9.5 + bob + Math.sin(a) * 1.2, 4, a - 1, a + 1);
+  ctx.arc(px + Math.cos(a) * 2.5, py - 9.5 + bob + breathe + Math.sin(a) * 1.2, 4, a - 1, a + 1);
   ctx.fill();
-  // arm + held item
-  const hx = px + Math.cos(a) * 13, hy = py - 1 + Math.sin(a) * 13;
+  // arm + held item (thrusts forward on attack)
+  const reach = 13 + lunge;
+  const hx = px + Math.cos(a) * reach, hy = py - 1 + Math.sin(a) * reach + bob * 0.5;
   ctx.strokeStyle = '#c9a071'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(px + Math.cos(a) * 6, py + Math.sin(a) * 6); ctx.lineTo(hx, hy); ctx.stroke();
   ctx.lineWidth = 1;
   if (e.h) {
     ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(ITEMS[e.h]?.emoji || '', hx + Math.cos(a) * 5, hy + Math.sin(a) * 5 + 5);
+    ctx.save();
+    ctx.translate(hx + Math.cos(a) * 5, hy + Math.sin(a) * 5 + 5);
+    if (lunge) ctx.rotate(a * 0.1 + lunge * 0.05);
+    ctx.fillText(ITEMS[e.h]?.emoji || '', 0, 0);
+    ctx.restore();
   }
   // sleeping
   if (e.sl) {
